@@ -556,6 +556,39 @@ torch::Tensor RL_Sim::Forward()
 {
     torch::autograd::GradMode::set_enabled(false);
 
+    // Try ONNX inference first if model is loaded
+    if (this->onnx_engine.IsModelLoaded()) {
+        try {
+            std::vector<float> clamped_obs = this->ComputeObservationFloat();
+            std::vector<float> actions;
+            
+            if (this->params.observations_history.size() != 0) {
+                torch::Tensor obs_tensor = this->ComputeObservation();
+                this->history_obs_buf.insert(obs_tensor);
+                this->history_obs = this->history_obs_buf.get_obs_vec(this->params.observations_history);
+                std::vector<float> history_obs_vec = this->TensorToVector(this->history_obs);
+                std::vector<int64_t> input_shape = {1, static_cast<int64_t>(history_obs_vec.size())};
+                actions = this->onnx_engine.Forward(history_obs_vec, input_shape);
+            } else {
+                std::vector<int64_t> input_shape = {1, static_cast<int64_t>(clamped_obs.size())};
+                actions = this->onnx_engine.Forward(clamped_obs, input_shape);
+            }
+            
+            // Convert back to tensor
+            torch::Tensor actions_tensor = this->VectorToTensor(actions, {1, static_cast<int64_t>(actions.size())});
+            
+            // Apply clipping
+            if (this->params.clip_actions_upper.numel() != 0 && this->params.clip_actions_lower.numel() != 0) {
+                return torch::clamp(actions_tensor, this->params.clip_actions_lower, this->params.clip_actions_upper);
+            } else {
+                return actions_tensor;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[Forward] ONNX inference failed: " << e.what() << ", falling back to PyTorch" << std::endl;
+        }
+    }
+
+    // Fallback to PyTorch inference
     torch::Tensor clamped_obs = this->ComputeObservation();
 
     torch::Tensor actions;

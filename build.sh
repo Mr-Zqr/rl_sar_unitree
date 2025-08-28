@@ -64,14 +64,34 @@ ask_confirmation() {
 # ========================
 
 run_cmake_build() {
+    local build_type="$1"
+    
     print_header "[Running CMake Build]"
     print_warning "NOTE: CMake build is for hardware deployment only, not for simulation."
     print_separator
 
-    cmake src/rl_sar/ -B cmake_build -DUSE_CMAKE=ON
-    cmake --build cmake_build -j4
+    # Set build type (default to Release if not specified)
+    if [ -z "$build_type" ]; then
+        build_type="Release"
+    fi
 
-    print_success "CMake build completed!"
+    print_info "Build type: $build_type"
+    
+    # Configure with appropriate build type
+    cmake src/rl_sar/ -B cmake_build \
+        -DUSE_CMAKE=ON \
+        -DCMAKE_BUILD_TYPE="$build_type" \
+        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+    # Build with appropriate verbosity
+    if [ "$build_type" = "Debug" ]; then
+        print_info "Building in Debug mode with verbose output..."
+        cmake --build cmake_build -j4 --verbose
+    else
+        cmake --build cmake_build -j4
+    fi
+
+    print_success "CMake build completed in $build_type mode!"
 }
 
 run_ros_build() {
@@ -315,28 +335,36 @@ show_usage() {
     echo -e "Usage: $0 [OPTIONS] [PACKAGE_NAMES...]"
     echo ""
     echo -e "${COLOR_INFO}Options:${COLOR_RESET}"
-    echo -e "  -c, --clean    Clean workspace (remove symlinks and build artifacts)"
-    echo -e "  -m, --cmake    Build using CMake (for hardware deployment only)"
-    echo -e "  -h, --help     Show this help message"
+    echo -e "  -c, --clean       Clean workspace (remove symlinks and build artifacts)"
+    echo -e "  -m, --cmake       Build using CMake (for hardware deployment only)"
+    echo -e "  -d, --debug       Build in Debug mode (with -g flag and verbose output)"
+    echo -e "  -r, --release     Build in Release mode (default, with optimizations)"
+    echo -e "  -h, --help        Show this help message"
     echo ""
     echo -e "${COLOR_INFO}Examples:${COLOR_RESET}"
-    echo -e "  $0                    # Build all ROS packages"
-    echo -e "  $0 package1 package2  # Build specific ROS packages"
-    echo -e "  $0 -c                 # Clean all symlinks and build artifacts"
-    echo -e "  $0 --clean package1   # Clean specific package and build artifacts"
-    echo -e "  $0 -m                 # Build with CMake for hardware deployment"
+    echo -e "  $0                      # Build all ROS packages"
+    echo -e "  $0 package1 package2    # Build specific ROS packages"
+    echo -e "  $0 -c                   # Clean all symlinks and build artifacts"
+    echo -e "  $0 --clean package1     # Clean specific package and build artifacts"
+    echo -e "  $0 -m                   # Build with CMake for hardware deployment (Release)"
+    echo -e "  $0 -m -d                # Build with CMake in Debug mode"
+    echo -e "  $0 --cmake --debug      # Same as above"
+    echo -e "  $0 -m -r                # Build with CMake in Release mode (explicit)"
 }
 
 main() {
     local packages=()
     local clean_mode=false
     local cmake_mode=false
+    local build_type=""
 
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
             -c|--clean) clean_mode=true; shift ;;
             -m|--cmake) cmake_mode=true; shift ;;
+            -d|--debug) build_type="Debug"; shift ;;
+            -r|--release) build_type="Release"; shift ;;
             -h|--help) show_usage; exit 0 ;;
             --) shift; packages+=("$@"); break ;;
             -*) print_error "Unknown option: $1"; show_usage; exit 1 ;;
@@ -346,8 +374,14 @@ main() {
 
     # Handle CMake build mode
     if [ "$cmake_mode" = true ]; then
-        run_cmake_build
+        run_cmake_build "$build_type"
         exit 0
+    fi
+
+    # Warn if build type is specified without cmake mode
+    if [ -n "$build_type" ] && [ "$cmake_mode" = false ]; then
+        print_warning "Build type (-d/--debug or -r/--release) is only applicable with CMake mode (-m/--cmake)"
+        print_info "Ignoring build type and proceeding with ROS build..."
     fi
 
     # Handle clean mode

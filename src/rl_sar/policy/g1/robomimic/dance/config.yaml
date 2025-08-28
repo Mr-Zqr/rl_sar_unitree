@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 g1/robomimic/dance:
-  model_name: "dance_0605_aligned.pt"
+  model_name: "model_133000.onnx"
   num_observations: 94
   observations: ["ang_vel", "gravity_vec", "dof_pos", "dof_vel", "actions", "g1_mimic_phase"]
   observations_history: [0, 1, 2, 3]  # 0 is the latest observation

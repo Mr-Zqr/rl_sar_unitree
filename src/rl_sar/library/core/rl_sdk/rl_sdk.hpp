@@ -17,6 +17,7 @@
 #include <yaml-cpp/yaml.h>
 #include "fsm_core.hpp"
 #include "observation_buffer.hpp"
+#include "onnx_engine.hpp"
 
 namespace LOGGER
 {
@@ -232,8 +233,15 @@ public:
     void TorqueProtect(torch::Tensor origin_output_dof_tau);
     void AttitudeProtect(const std::vector<double> &quaternion, float pitch_threshold, float roll_threshold);
 
+    // conversion helpers for ONNX
+    std::vector<float> TensorToVector(const torch::Tensor& tensor);
+    torch::Tensor VectorToTensor(const std::vector<float>& vec, const std::vector<int64_t>& shape);
+    std::vector<float> ComputeObservationFloat();
+
     // rl module
     torch::jit::script::Module model;
+    ONNXInferenceEngine onnx_engine;
+    bool pytorch_model_loaded = false;
     // output buffer
     torch::Tensor output_dof_tau;
     torch::Tensor output_dof_pos;

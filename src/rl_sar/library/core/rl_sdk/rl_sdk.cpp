@@ -4,6 +4,7 @@
  */
 
 #include "rl_sdk.hpp"
+#include <fstream>
 
 void RL::StateController(const RobotState<double>* state, RobotCommand<double>* command)
 {
@@ -141,32 +142,124 @@ void RL::InitControl()
 
 void RL::InitRL(std::string robot_path)
 {
-    this->ReadYamlRL(robot_path);
-    for (std::string &observation : this->params.observations)
-    {
-        if (observation == "ang_vel")
+    try {
+        this->ReadYamlRL(robot_path);
+        for (std::string &observation : this->params.observations)
         {
-            // In ROS1 Gazebo, the coordinate system for angular velocity is in the world coordinate system.
-            // In ROS2 Gazebo and real robot, the coordinate system for angular velocity is in the body coordinate system.
-            observation = this->ang_vel_type;
+            if (observation == "ang_vel")
+            {
+                // In ROS1 Gazebo, the coordinate system for angular velocity is in the world coordinate system.
+                // In ROS2 Gazebo and real robot, the coordinate system for angular velocity is in the body coordinate system.
+                observation = this->ang_vel_type;
+            }
         }
+
+        // init rl
+        this->InitObservations();
+        this->InitOutputs();
+        this->InitControl();
+
+        // init obs history
+        if (!this->params.observations_history.empty())
+        {
+            int history_length = *std::max_element(this->params.observations_history.begin(), this->params.observations_history.end()) + 1;
+            this->history_obs_buf = ObservationBuffer(1, this->obs_dims, history_length, this->params.observations_history_priority);
+        }
+
+        // init model
+        std::string model_path = std::string(CMAKE_CURRENT_SOURCE_DIR) + "/policy/" + robot_path + "/" + this->params.model_name;
+        std::cout << "[RL_SDK] Model specified in config: " << this->params.model_name << std::endl;
+        
+        // Check if model file exists
+        std::ifstream model_file(model_path);
+        if (!model_file.good()) {
+            throw std::runtime_error("Model file not found: " + model_path);
+        }
+        model_file.close();
+        
+        // Determine model type and load accordingly
+        if (this->params.model_name.find(".onnx") != std::string::npos) {
+            // Config specifies ONNX model - load only ONNX
+            std::cout << "[RL_SDK] Loading ONNX model: " << model_path << std::endl;
+            try {
+                this->onnx_engine.LoadModel(model_path);
+                std::cout << "[RL_SDK] ONNX model loaded successfully" << std::endl;
+            } catch (const std::exception& e) {
+                throw std::runtime_error("Failed to load ONNX model: " + std::string(e.what()));
+            }
+            
+            // Try to find corresponding PyTorch model for fallback
+            std::string pt_model_path = model_path;
+            size_t onnx_pos = pt_model_path.find(".onnx");
+            if (onnx_pos != std::string::npos) {
+                pt_model_path.replace(onnx_pos, 5, ".pt");
+                std::ifstream pt_file(pt_model_path);
+                if (pt_file.good()) {
+                    pt_file.close();
+                    try {
+                        this->model = torch::jit::load(pt_model_path);
+                        this->pytorch_model_loaded = true;
+                        std::cout << "[RL_SDK] PyTorch fallback model loaded: " << pt_model_path << std::endl;
+                    } catch (const std::exception& e) {
+                        std::cout << "[RL_SDK] Warning: Failed to load PyTorch fallback model: " << e.what() << std::endl;
+                        this->pytorch_model_loaded = false;
+                    }
+                } else {
+                    std::cout << "[RL_SDK] Warning: No PyTorch fallback model found at: " << pt_model_path << std::endl;
+                    this->pytorch_model_loaded = false;
+                }
+            }
+        } else if (this->params.model_name.find(".pt") != std::string::npos) {
+            // Config specifies PyTorch model - load PyTorch first, then try ONNX
+            std::cout << "[RL_SDK] Loading PyTorch model: " << model_path << std::endl;
+            try {
+                this->model = torch::jit::load(model_path);
+                this->pytorch_model_loaded = true;
+                std::cout << "[RL_SDK] PyTorch model loaded successfully" << std::endl;
+            } catch (const std::exception& e) {
+                throw std::runtime_error("Failed to load PyTorch model: " + std::string(e.what()));
+            }
+            
+            // Try to load corresponding ONNX model
+            std::string onnx_model_path = model_path;
+            size_t pt_pos = onnx_model_path.find(".pt");
+            if (pt_pos != std::string::npos) {
+                onnx_model_path.replace(pt_pos, 3, ".onnx");
+                std::ifstream onnx_file(onnx_model_path);
+                if (onnx_file.good()) {
+                    onnx_file.close();
+                    try {
+                        this->onnx_engine.LoadModel(onnx_model_path);
+                        std::cout << "[RL_SDK] ONNX model loaded successfully: " << onnx_model_path << std::endl;
+                    } catch (const std::exception& e) {
+                        std::cout << "[RL_SDK] Failed to load ONNX model: " << e.what() << std::endl;
+                        std::cout << "[RL_SDK] Will use PyTorch model only" << std::endl;
+                    }
+                } else {
+                    std::cout << "[RL_SDK] ONNX model not found: " << onnx_model_path << std::endl;
+                    std::cout << "[RL_SDK] Using PyTorch model only" << std::endl;
+                }
+            }
+        } else {
+            // Unknown model format - assume PyTorch for backward compatibility
+            std::cout << "[RL_SDK] Unknown model format, assuming PyTorch: " << model_path << std::endl;
+            try {
+                this->model = torch::jit::load(model_path);
+                this->pytorch_model_loaded = true;
+                std::cout << "[RL_SDK] PyTorch model loaded successfully" << std::endl;
+            } catch (const std::exception& e) {
+                throw std::runtime_error("Failed to load model as PyTorch: " + std::string(e.what()));
+            }
+        }
+        
+        std::cout << "[RL_SDK] Model initialization completed successfully" << std::endl;
+        
+    } catch (const std::exception& e) {
+        std::cerr << "[ERROR] InitRL() failed: " << e.what() << std::endl;
+        std::cerr << "[ERROR] Robot path: " << robot_path << std::endl;
+        std::cerr << "[ERROR] Model name: " << this->params.model_name << std::endl;
+        throw;
     }
-
-    // init rl
-    this->InitObservations();
-    this->InitOutputs();
-    this->InitControl();
-
-    // init obs history
-    if (!this->params.observations_history.empty())
-    {
-        int history_length = *std::max_element(this->params.observations_history.begin(), this->params.observations_history.end()) + 1;
-        this->history_obs_buf = ObservationBuffer(1, this->obs_dims, history_length, this->params.observations_history_priority);
-    }
-
-    // init model
-    std::string model_path = std::string(CMAKE_CURRENT_SOURCE_DIR) + "/policy/" + robot_path + "/" + this->params.model_name;
-    this->model = torch::jit::load(model_path);
 }
 
 void RL::ComputeOutput(const torch::Tensor &actions, torch::Tensor &output_dof_pos, torch::Tensor &output_dof_vel, torch::Tensor &output_dof_tau)
@@ -491,4 +584,34 @@ void RL::CSVLogger(torch::Tensor torque, torch::Tensor tau_est, torch::Tensor jo
     file << std::endl;
 
     file.close();
+}
+
+std::vector<float> RL::TensorToVector(const torch::Tensor& tensor)
+{
+    // Flatten tensor to 1D and convert to vector
+    torch::Tensor flat_tensor = tensor.flatten();
+    std::vector<float> result;
+    result.reserve(flat_tensor.numel());
+    
+    auto accessor = flat_tensor.accessor<float, 1>();
+    for (int i = 0; i < flat_tensor.numel(); ++i) {
+        result.push_back(accessor[i]);
+    }
+    return result;
+}
+
+torch::Tensor RL::VectorToTensor(const std::vector<float>& vec, const std::vector<int64_t>& shape)
+{
+    torch::Tensor tensor = torch::from_blob(
+        const_cast<float*>(vec.data()), 
+        shape, 
+        torch::TensorOptions().dtype(torch::kFloat32)
+    ).clone();
+    return tensor;
+}
+
+std::vector<float> RL::ComputeObservationFloat()
+{
+    torch::Tensor obs_tensor = this->ComputeObservation();
+    return this->TensorToVector(obs_tensor);
 }

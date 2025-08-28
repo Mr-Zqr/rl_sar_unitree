@@ -78,6 +78,39 @@ find_package(TBB REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
+# ONNX Runtime configuration
+set(ONNXRUNTIME_ROOT_PATH "/home/zqr/apps/onnxruntime" CACHE PATH "Path to ONNX Runtime installation")
+
+# Check if ONNX Runtime exists at specified path
+if(EXISTS "${ONNXRUNTIME_ROOT_PATH}")
+    set(ONNXRUNTIME_INCLUDE_DIR "${ONNXRUNTIME_ROOT_PATH}/include")
+    
+    # Find the library file
+    find_library(ONNXRUNTIME_LIB
+        NAMES onnxruntime
+        PATHS "${ONNXRUNTIME_ROOT_PATH}/lib"
+        NO_DEFAULT_PATH
+    )
+    
+    # Check if both include and lib are found
+    if(EXISTS "${ONNXRUNTIME_INCLUDE_DIR}/onnxruntime_cxx_api.h" AND ONNXRUNTIME_LIB)
+        message(STATUS "Found ONNX Runtime at: ${ONNXRUNTIME_ROOT_PATH}")
+        message(STATUS "  Include dir: ${ONNXRUNTIME_INCLUDE_DIR}")
+        message(STATUS "  Library: ${ONNXRUNTIME_LIB}")
+        set(ONNXRUNTIME_FOUND TRUE)
+        add_compile_definitions(USE_ONNXRUNTIME)
+    else()
+        message(WARNING "ONNX Runtime installation incomplete at ${ONNXRUNTIME_ROOT_PATH}")
+        message(WARNING "  Missing header: ${ONNXRUNTIME_INCLUDE_DIR}/onnxruntime_cxx_api.h")
+        message(WARNING "  Missing library: ${ONNXRUNTIME_LIB}")
+        set(ONNXRUNTIME_FOUND FALSE)
+    endif()
+else()
+    message(WARNING "ONNX Runtime not found at ${ONNXRUNTIME_ROOT_PATH}")
+    message(STATUS "Will use PyTorch only")
+    set(ONNXRUNTIME_FOUND FALSE)
+endif()
+
 link_directories(/usr/local/lib)
 include_directories(${YAML_CPP_INCLUDE_DIR})
 
@@ -152,10 +185,33 @@ include_directories(
     library/core/matplotlibcpp
     library/core/observation_buffer
     library/core/rl_sdk
+    library/core/onnx_engine
     library/core/loop
     library/core/fsm
     policy
 )
+
+if(ONNXRUNTIME_FOUND)
+    include_directories(${ONNXRUNTIME_INCLUDE_DIR})
+endif()
+
+add_library(onnx_engine library/core/onnx_engine/onnx_engine.cpp)
+set_target_properties(onnx_engine PROPERTIES
+    CXX_STANDARD 14
+    CXX_STANDARD_REQUIRED ON
+)
+if(ONNXRUNTIME_FOUND)
+    target_link_libraries(onnx_engine PUBLIC ${ONNXRUNTIME_LIB})
+    target_include_directories(onnx_engine PUBLIC ${ONNXRUNTIME_INCLUDE_DIR})
+else()
+    # Create a dummy implementation if ONNX Runtime is not found
+    target_compile_definitions(onnx_engine PUBLIC NO_ONNXRUNTIME)
+endif()
+if(NOT USE_CMAKE)
+    if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        install(TARGETS onnx_engine DESTINATION lib/${PROJECT_NAME})
+    endif()
+endif()
 
 add_library(rl_sdk library/core/rl_sdk/rl_sdk.cpp)
 set_target_properties(rl_sdk PROPERTIES
@@ -164,6 +220,7 @@ set_target_properties(rl_sdk PROPERTIES
 )
 target_link_libraries(rl_sdk PUBLIC
     "${TORCH_LIBRARIES}"
+    onnx_engine
     Python3::Python
     Python3::Module
     TBB::tbb
@@ -220,68 +277,68 @@ if(NOT USE_CMAKE)
     endif()
 endif()
 
-add_executable(rl_real_a1 src/rl_real_a1.cpp)
-target_link_libraries(rl_real_a1
-    ${UNITREE_A1_LIBS}
-    rl_sdk
-    observation_buffer
-    yaml-cpp
-)
-if(NOT USE_CMAKE)
-    if($ENV{ROS_DISTRO} MATCHES "noetic")
-        target_link_libraries(rl_real_a1 ${catkin_LIBRARIES})
-    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
-        ament_target_dependencies(rl_real_a1
-            rclcpp
-            geometry_msgs
-        )
-        install(TARGETS rl_real_a1 DESTINATION lib/${PROJECT_NAME})
-    endif()
-endif()
+# add_executable(rl_real_a1 src/rl_real_a1.cpp)
+# target_link_libraries(rl_real_a1
+#     ${UNITREE_A1_LIBS}
+#     rl_sdk
+#     observation_buffer
+#     yaml-cpp
+# )
+# if(NOT USE_CMAKE)
+#     if($ENV{ROS_DISTRO} MATCHES "noetic")
+#         target_link_libraries(rl_real_a1 ${catkin_LIBRARIES})
+#     elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+#         ament_target_dependencies(rl_real_a1
+#             rclcpp
+#             geometry_msgs
+#         )
+#         install(TARGETS rl_real_a1 DESTINATION lib/${PROJECT_NAME})
+#     endif()
+# endif()
 
-add_executable(rl_real_lite3
-    src/rl_real_lite3.cpp
-    ${GAMEPAD_SRC}
-)
-target_link_libraries(rl_real_lite3
-    ${LITE3_REAL_LIBS}
-    rl_sdk
-    observation_buffer
-    yaml-cpp
-)
-target_include_directories(rl_real_lite3 PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/gamepad/include
-)
-if(NOT USE_CMAKE)
-    if($ENV{ROS_DISTRO} MATCHES "noetic")
-        target_link_libraries(rl_real_lite3 ${catkin_LIBRARIES})
-    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
-        ament_target_dependencies(rl_real_lite3
-            rclcpp
-            geometry_msgs
-        )
-        install(TARGETS rl_real_lite3 DESTINATION lib/${PROJECT_NAME})
-    endif()
-endif()
+# add_executable(rl_real_lite3
+#     src/rl_real_lite3.cpp
+#     ${GAMEPAD_SRC}
+# )
+# target_link_libraries(rl_real_lite3
+#     ${LITE3_REAL_LIBS}
+#     rl_sdk
+#     observation_buffer
+#     yaml-cpp
+# )
+# target_include_directories(rl_real_lite3 PRIVATE
+#     ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/gamepad/include
+# )
+# if(NOT USE_CMAKE)
+#     if($ENV{ROS_DISTRO} MATCHES "noetic")
+#         target_link_libraries(rl_real_lite3 ${catkin_LIBRARIES})
+#     elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+#         ament_target_dependencies(rl_real_lite3
+#             rclcpp
+#             geometry_msgs
+#         )
+#         install(TARGETS rl_real_lite3 DESTINATION lib/${PROJECT_NAME})
+#     endif()
+# endif()
 
-add_executable(rl_real_go2 src/rl_real_go2.cpp)
-target_link_libraries(rl_real_go2
-    unitree_sdk2
-    rl_sdk
-    observation_buffer
-    yaml-cpp
-)
-if(NOT USE_CMAKE)
-    if($ENV{ROS_DISTRO} MATCHES "noetic")
-        target_link_libraries(rl_real_go2 ${catkin_LIBRARIES})
-    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
-        ament_target_dependencies(rl_real_go2
-            rclcpp
-            geometry_msgs
-        )
-        install(TARGETS rl_real_go2 DESTINATION lib/${PROJECT_NAME})
-    endif()
-endif()
+# add_executable(rl_real_go2 src/rl_real_go2.cpp)
+# target_link_libraries(rl_real_go2
+#     unitree_sdk2
+#     rl_sdk
+#     observation_buffer
+#     yaml-cpp
+# )
+# if(NOT USE_CMAKE)
+#     if($ENV{ROS_DISTRO} MATCHES "noetic")
+#         target_link_libraries(rl_real_go2 ${catkin_LIBRARIES})
+#     elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+#         ament_target_dependencies(rl_real_go2
+#             rclcpp
+#             geometry_msgs
+#         )
+#         install(TARGETS rl_real_go2 DESTINATION lib/${PROJECT_NAME})
+#     endif()
+# endif()
 
 add_executable(rl_real_g1 src/rl_real_g1.cpp)
 target_link_libraries(rl_real_g1
@@ -302,24 +359,24 @@ if(NOT USE_CMAKE)
     endif()
 endif()
 
-add_executable(rl_real_l4w4 src/rl_real_l4w4.cpp)
-target_link_libraries(rl_real_l4w4
-    l4w4_sdk
-    rl_sdk
-    observation_buffer
-    yaml-cpp
-)
-if(NOT USE_CMAKE)
-    if($ENV{ROS_DISTRO} MATCHES "noetic")
-        target_link_libraries(rl_real_l4w4 ${catkin_LIBRARIES})
-    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
-        ament_target_dependencies(rl_real_l4w4
-            rclcpp
-            geometry_msgs
-        )
-        install(TARGETS rl_real_l4w4 DESTINATION lib/${PROJECT_NAME})
-    endif()
-endif()
+# add_executable(rl_real_l4w4 src/rl_real_l4w4.cpp)
+# target_link_libraries(rl_real_l4w4
+#     l4w4_sdk
+#     rl_sdk
+#     observation_buffer
+#     yaml-cpp
+# )
+# if(NOT USE_CMAKE)
+#     if($ENV{ROS_DISTRO} MATCHES "noetic")
+#         target_link_libraries(rl_real_l4w4 ${catkin_LIBRARIES})
+#     elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+#         ament_target_dependencies(rl_real_l4w4
+#             rclcpp
+#             geometry_msgs
+#         )
+#         install(TARGETS rl_real_l4w4 DESTINATION lib/${PROJECT_NAME})
+#     endif()
+# endif()
 
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")
