@@ -36,6 +36,8 @@ torch::Tensor RL::ComputeObservation()
         }
         else if (observation == "ang_vel_body")
         {
+            // std::cout << "ang_vel_body: " << this->obs.ang_vel << std::endl;
+            // std::cout << "ang_vel_body_scale: " << this->params.ang_vel_scale << std::endl;
             obs_list.push_back(this->obs.ang_vel * this->params.ang_vel_scale);
         }
         else if (observation == "ang_vel_world")
@@ -57,10 +59,14 @@ torch::Tensor RL::ComputeObservation()
             {
                 dof_pos_rel[0][i] = 0.0;
             }
+            // std::cout << "dof_pos: " << dof_pos_rel << std::endl;
+            // std::cout << "dof_pos_scale: " << this->params.dof_pos_scale << std::endl;
             obs_list.push_back(dof_pos_rel * this->params.dof_pos_scale);
         }
         else if (observation == "dof_vel")
         {
+            // std::cout << "vel_scale: " << this->params.dof_vel_scale << std::endl;
+            // std::cout << "dof_vel: " << this->obs.dof_vel << std::endl;
             obs_list.push_back(this->obs.dof_vel * this->params.dof_vel_scale);
         }
         else if (observation == "actions")
@@ -107,8 +113,14 @@ torch::Tensor RL::ComputeObservation()
         }
         else if (observation == "motion_anchor_ori_b")
         {
-            torch::Tensor motion_anchor_ori_b_quat = this->QuatInverseTimeQuat(this->ref_body_quat_w, this->obs.base_quat);
+
+            torch::Tensor motion_anchor_ori_b_quat = this->QuatInverseTimeQuat(this->obs.base_quat, this->ref_body_quat_w);
             torch::Tensor motion_anchor_ori_b_mat = this->Quat2MatTwoColumn(motion_anchor_ori_b_quat);
+
+            // std::cout << "[RlSDK] ref_anchor_ori_w: " << this->ref_body_quat_w << std::endl;
+            // std::cout << "[RlSDK] obs.base_quat: " << this->obs.base_quat << std::endl;
+            // std::cout << "[RLSRK] motion_anchor_ori_b_quat: " << motion_anchor_ori_b_quat << std::endl;
+            // std::cout << "[RlSDK] mat: " << motion_anchor_ori_b_mat << std::endl;
 
             obs_list.push_back(motion_anchor_ori_b_mat);
         }
@@ -368,8 +380,8 @@ torch::Tensor RL::QuatInverseTimeQuat(torch::Tensor q01, torch::Tensor q02)
     torch::Tensor q01_z = q01.index({torch::indexing::Slice(), 3});
     
     // Extract components from q02 (wxyz format)
-    torch::Tensor q02_w = q02.index({torch::indexing::Slice(), 3});
-    torch::Tensor q02_x = q02.index({torch::indexing::Slice(), 0});
+    torch::Tensor q02_w = q02.index({torch::indexing::Slice(), 0});
+    torch::Tensor q02_x = q02.index({torch::indexing::Slice(), 1});
     torch::Tensor q02_y = q02.index({torch::indexing::Slice(), 2});
     torch::Tensor q02_z = q02.index({torch::indexing::Slice(), 3});
     

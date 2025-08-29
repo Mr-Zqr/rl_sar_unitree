@@ -375,7 +375,7 @@ public:
             rl.control.current_keyboard = Input::Keyboard::Num0;
         }
 
-        rl.motion_length = 18.0;
+        rl.motion_length = 140.0;
 
         // pos init
     }

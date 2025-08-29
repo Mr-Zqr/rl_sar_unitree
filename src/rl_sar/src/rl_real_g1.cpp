@@ -6,6 +6,9 @@
 #include "rl_real_g1.hpp"
 #include "onnxruntime_cxx_api.h"
 
+
+// 全局指针用于信号处理
+RL_Real* g_rl_real_instance = nullptr;
 RL_Real::RL_Real()
 #if defined(USE_ROS2) && defined(USE_ROS)
     : rclcpp::Node("rl_real_node")
@@ -93,10 +96,23 @@ RL_Real::RL_Real()
 #ifdef CSV_LOGGER
     this->CSVInit(this->robot_name);
 #endif
+    // 初始化日志器
+    this->logger_ = std::make_unique<RLLogger>();
+    this->logging_active_ = false;
+    this->previous_rl_init_done_ = false;
+    this->start_time_ = std::chrono::high_resolution_clock::now();
+    this->last_log_time_ = this->start_time_;
+    this->last_inference_time_ = 0.0;
 }
 
 RL_Real::~RL_Real()
 {
+    // 在退出时保存日志
+    if (this->logging_active_ && this->logger_->HasData()) {
+        std::cout << LOGGER::INFO << "Saving log data before exit..." << std::endl;
+        this->SaveCurrentLog();
+    }
+    
     this->loop_keyboard->shutdown();
     this->loop_control->shutdown();
     this->loop_rl->shutdown();
@@ -245,12 +261,16 @@ void RL_Real::RobotControl()
     this->GetState(&this->robot_state);
     this->StateController(&this->robot_state, &this->robot_command);
     this->SetCommand(&this->robot_command);
+    // 处理日志记录
+    this->HandleLogging();
 }
 
 void RL_Real::RunModel()
 {
     if (this->rl_init_done)
     {
+        auto inference_start = std::chrono::high_resolution_clock::now();
+        
         this->episode_length_buf += 1;
         this->obs.ang_vel = torch::tensor(this->robot_state.imu.gyroscope).unsqueeze(0);
         if (this->control.navigation_mode)
@@ -269,6 +289,11 @@ void RL_Real::RunModel()
 
         this->obs.actions = this->Forward();
         this->ComputeOutput(this->obs.actions, this->output_dof_pos, this->output_dof_vel, this->output_dof_tau);
+
+        auto inference_end = std::chrono::high_resolution_clock::now();
+        // 计算推理时间并转换为毫秒
+        auto inference_duration = std::chrono::duration_cast<std::chrono::microseconds>(inference_end - inference_start);
+        this->last_inference_time_ = static_cast<double>(inference_duration.count()) * 1e-6; // 转换为秒
 
         if (this->output_dof_pos.defined() && this->output_dof_pos.numel() > 0)
         {
@@ -290,6 +315,10 @@ void RL_Real::RunModel()
         torch::Tensor tau_est = torch::tensor(this->robot_state.motor_state.tau_est).unsqueeze(0);
         this->CSVLogger(this->output_dof_tau, tau_est, this->obs.dof_pos, this->output_dof_pos, this->obs.dof_vel);
 #endif
+    }
+    else
+    {
+        this->last_inference_time_ = 0.0; // RL未初始化时推理时间为0
     }
 }
 
@@ -329,14 +358,14 @@ torch::Tensor RL_Real::Forward()
             this->ref_body_quat_w = this->VectorToTensor(motion_anchor_quat_w, {1, 4});
 
             // Convert back to tensor
-            torch::Tensor actions_tensor = this->VectorToTensor(actions, {1, static_cast<int64_t>(actions.size())});
-            
+            torch::Tensor actions_tensor = this->VectorToTensor(actions, {1, 29});
+
             // Apply clipping
-            if (this->params.clip_actions_upper.numel() != 0 && this->params.clip_actions_lower.numel() != 0) {
-                return torch::clamp(actions_tensor, this->params.clip_actions_lower, this->params.clip_actions_upper);
-            } else {
+            // if (this->params.clip_actions_upper.numel() != 0 && this->params.clip_actions_lower.numel() != 0) {
+            //     return torch::clamp(actions_tensor, this->params.clip_actions_lower, this->params.clip_actions_upper);
+            // } else {
                 return actions_tensor;
-            }
+            // }
         } catch (const std::exception& e) {
             std::cerr << "[Forward] ONNX inference failed: " << e.what() << ", falling back to PyTorch" << std::endl;
         }
@@ -449,6 +478,122 @@ void RL_Real::ImuTorsoHandler(const void *message)
     this->unitree_imu_torso = *(const IMUState_ *)message;
 }
 
+void signalHandler(int signum)
+{
+    if (g_rl_real_instance && g_rl_real_instance->logging_active_ && g_rl_real_instance->logger_->HasData()) {
+        std::cout << std::endl << LOGGER::INFO << "💾 Saving log data before exit..." << std::endl;
+        g_rl_real_instance->SaveCurrentLog();
+    }
+    exit(0);
+}
+
+void RL_Real::HandleLogging()
+{
+    // 检查是否应该开始记录日志（进入活动状态）
+    if (!this->logging_active_ && this->rl_init_done && !this->previous_rl_init_done_) {
+        std::cout << LOGGER::INFO << "🔴 Starting data logging - RL system initialized" << std::endl;
+        this->logging_active_ = true;
+        this->logger_->Clear(); // 清空之前的数据
+        this->start_time_ = std::chrono::high_resolution_clock::now();
+        this->last_log_time_ = this->start_time_;
+    }
+    
+    // 检查是否应该停止记录并保存（回到passive模式）
+    else if (this->logging_active_ && !this->rl_init_done && this->previous_rl_init_done_) {
+        std::cout << LOGGER::INFO << "🟢 Stopping data logging - RL system deactivated" << std::endl;
+        this->SaveCurrentLog();
+        this->logging_active_ = false;
+    }
+    
+    // 如果正在记录日志，则记录当前数据
+    if (this->logging_active_) {
+        this->RecordControlData();
+    }
+    
+    this->previous_rl_init_done_ = this->rl_init_done;
+}
+
+void RL_Real::RecordControlData()
+{
+    auto current_time = std::chrono::high_resolution_clock::now();
+    auto timestamp_duration = std::chrono::duration_cast<std::chrono::microseconds>(current_time - this->start_time_);
+    auto loop_time_duration = std::chrono::duration_cast<std::chrono::microseconds>(current_time - this->last_log_time_);
+    
+    double timestamp = static_cast<double>(timestamp_duration.count()) / 1000000.0; // 转换为秒
+    double loop_time = static_cast<double>(loop_time_duration.count()) / 1000000.0; // 转换为秒
+    
+    // 记录时间戳
+    this->logger_->Record("timestamp", timestamp);
+    this->logger_->Record("loop_time", loop_time);
+    this->logger_->Record("motion_time", this->motiontime);
+    
+    // 记录RL推理相关数据
+    this->logger_->Record("rl_inference_time", this->last_inference_time_);
+    this->logger_->Record("episode_length_buf", this->episode_length_buf);
+    this->logger_->Record("rl_init_done", this->rl_init_done ? 1.0 : 0.0);
+    
+    // 记录关节数据
+    for (int i = 0; i < this->params.num_of_dofs; ++i) {
+        
+        // 从robot_command中获取目标值和增益
+        // target_q = this->robot_command.motor_command.q[i] * 180.0 / M_PI; // 转换为度
+        // kp = this->robot_command.motor_command.kp[i];
+        // kd = this->robot_command.motor_command.kd[i];
+        
+        this->logger_->RecordJointData(
+            i,
+            this->robot_command.motor_command.q[i] * 180.0 / M_PI,
+            this->robot_state.motor_state.q[i] * 180.0 / M_PI, // 转换为度
+            this->robot_state.motor_state.dq[i] * 180.0 / M_PI, // 转换为度
+            this->robot_command.motor_command.kp[i],
+            this->robot_command.motor_command.kd[i],
+            this->robot_state.motor_state.tau_est[i]
+        );
+    }
+    
+    // 记录控制命令
+    this->logger_->Record("control_x", this->control.x);
+    this->logger_->Record("control_y", this->control.y);
+    this->logger_->Record("control_yaw", this->control.yaw);
+    this->logger_->Record("navigation_mode", this->control.navigation_mode ? 1.0 : 0.0);
+    
+    // 记录IMU数据
+    this->logger_->Record("imu_quat_w", this->robot_state.imu.quaternion[0]);
+    this->logger_->Record("imu_quat_x", this->robot_state.imu.quaternion[1]);
+    this->logger_->Record("imu_quat_y", this->robot_state.imu.quaternion[2]);
+    this->logger_->Record("imu_quat_z", this->robot_state.imu.quaternion[3]);
+
+    this->logger_->Record("imu_acc_x", this->robot_state.imu.accelerometer[0]);
+    this->logger_->Record("imu_acc_y", this->robot_state.imu.accelerometer[1]);
+    this->logger_->Record("imu_acc_z", this->robot_state.imu.accelerometer[2]);
+    
+    for (int i = 0; i < 3; ++i) {
+        this->logger_->Record("imu_gyro_" + std::to_string(i), this->robot_state.imu.gyroscope[i]);
+    }
+    
+    // 记录RL状态
+    this->logger_->Record("rl_init_done", this->rl_init_done ? 1.0 : 0.0);
+    this->logger_->Record("episode_length", this->episode_length_buf);
+    
+    this->last_log_time_ = current_time;
+}
+
+void RL_Real::SaveCurrentLog()
+{
+    if (this->logger_->HasData()) {
+        try {
+            this->logger_->SaveToCSV();
+            std::cout << LOGGER::INFO << "📊 Log data saved successfully!" << std::endl;
+        } catch (const std::exception& e) {
+            std::cout << LOGGER::ERROR << "❌ Error saving log: " << e.what() << std::endl;
+        }
+    } else {
+        std::cout << LOGGER::WARNING << "⚠️  No data to save" << std::endl;
+    }
+}
+
+
+
 #if !defined(USE_CMAKE) && defined(USE_ROS)
 void RL_Real::CmdvelCallback(
 #if defined(USE_ROS1) && defined(USE_ROS)
@@ -488,7 +633,9 @@ int main(int argc, char **argv)
     rclcpp::spin(std::make_shared<RL_Real>());
     rclcpp::shutdown();
 #elif defined(USE_CMAKE) || !defined(USE_ROS)
+    signal(SIGINT, signalHandler);
     RL_Real rl_sar;
+    g_rl_real_instance = &rl_sar;
     while (1) { sleep(10); }
 #endif
     return 0;

@@ -362,20 +362,10 @@ std::vector<Ort::Value> ONNXInferenceEngine::Forward(const std::vector<float>& o
     try {
         // Create input tensor
         std::vector<Ort::Value> input_tensors;
-        
-        std::cout << "obs size: " << obs.size() << std::endl;
-        std::cout << std::fixed << std::setprecision(6);  // Set high precision
-        for(int i = 0; i < obs.size(); i++)
-        {
-            std::cout << obs[i] << ", ";
-            if ((i + 1) % 10 == 0) std::cout << std::endl;  // New line every 10 values
-        }
-        std::cout << std::endl;
 
-        std::cout << "time_step: " << time_step << std::endl;
 
         // Keep data alive during inference - similar to FirstOutput approach
-        std::vector<float> time_step_data = { time_step + 1};
+        std::vector<float> time_step_data = { time_step};
         
         auto input_tensor_obs = Ort::Value::CreateTensor<float>(
             memory_info_,

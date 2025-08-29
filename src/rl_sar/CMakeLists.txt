@@ -340,7 +340,8 @@ endif()
 #     endif()
 # endif()
 
-add_executable(rl_real_g1 src/rl_real_g1.cpp)
+# add_executable(rl_real_g1 src/rl_real_g1.cpp)
+add_executable(rl_real_g1 src/rl_real_g1.cpp src/rl_logger.cpp)
 target_link_libraries(rl_real_g1
     unitree_sdk2
     rl_sdk

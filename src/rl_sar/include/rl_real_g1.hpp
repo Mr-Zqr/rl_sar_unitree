@@ -26,6 +26,7 @@
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
+#include "rl_logger.hpp"
 
 #if defined(USE_ROS1) && defined(USE_ROS)
 #include <ros/ros.h>
@@ -218,6 +219,9 @@ public:
     RL_Real();
     ~RL_Real();
 
+    std::unique_ptr<RLLogger> logger_;
+    bool logging_active_;
+    void SaveCurrentLog();
 private:
     // rl functions
     torch::Tensor Forward() override;
@@ -259,6 +263,14 @@ private:
     int motiontime = 0;
     std::vector<double> mapped_joint_positions;
     std::vector<double> mapped_joint_velocities;
+
+    // logger private members
+    bool previous_rl_init_done_;
+    std::chrono::high_resolution_clock::time_point start_time_;
+    std::chrono::high_resolution_clock::time_point last_log_time_;
+    double last_inference_time_; // RL推理时间，单位毫秒
+    void HandleLogging();
+    void RecordControlData();
 
 #if defined(USE_ROS1) && defined(USE_ROS)
     geometry_msgs::Twist cmd_vel;
