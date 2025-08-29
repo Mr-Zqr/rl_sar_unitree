@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 g1/robomimic/beyonddance:
-  model_name: "policy_w4tu0jfq_new_pd_as.onnx"
+  model_name: "policy_fightAndSports1_s1.onnx"
   num_observations: 154
   observations: ["commands_motion", "motion_anchor_ori_b", "ang_vel", "dof_pos", "dof_vel", "actions"]
   observations_history: []  # 0 is the latest observation
@@ -41,28 +41,6 @@ g1/robomimic/beyonddance:
           16.778, 16.778]
 
   rl_kd: [2.558, 2.558, 2.558, 
-          6.309, 6.309, 1.814, 
-          2.558, 2.558, 1.814, 
-          6.309, 6.309, 0.907, 0.907, 
-          1.814, 1.814, 0.907, 0.907, 
-          1.814, 1.814, 0.907, 0.907, 
-          0.907, 0.907, 
-          0.907, 0.907, 
-          1.068, 1.068, 
-          1.068, 1.068]
-
-  fixed_kp: [40.179, 40.179, 40.179, 
-          99.098, 99.098, 28.501, 
-          40.179, 40.179, 28.501, 
-          99.098, 99.098, 14.251, 14.251, 
-          28.501, 28.501, 14.251, 14.251, 
-          28.501, 28.501, 14.251, 14.251, 
-          14.251, 14.251, 
-          14.251, 14.251, 
-          16.778, 16.778, 
-          16.778, 16.778]
-
-  fixed_kd: [2.558, 2.558, 2.558, 
           6.309, 6.309, 1.814, 
           2.558, 2.558, 1.814, 
           6.309, 6.309, 0.907, 0.907, 
