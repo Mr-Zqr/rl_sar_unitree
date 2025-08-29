@@ -71,7 +71,7 @@ typedef union
     uint16_t value;
 } xKeySwitchUnion;
 
-// 40 Byte (now used 24B)
+// 40 Byte (now used 24Bbeyonddance
 typedef struct
 {
     uint8_t head[2];

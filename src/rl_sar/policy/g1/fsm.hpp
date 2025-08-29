@@ -361,7 +361,7 @@ public:
         rl.episode_length_buf = 0;
 
         // read params from yaml
-        rl.config_name = "robomimic/dance";
+        rl.config_name = "robomimic/beyonddance";
         std::string robot_path = rl.robot_name + "/" + rl.config_name;
         try
         {

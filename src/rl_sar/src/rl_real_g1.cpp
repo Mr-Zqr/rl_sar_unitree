@@ -4,6 +4,7 @@
  */
 
 #include "rl_real_g1.hpp"
+#include "onnxruntime_cxx_api.h"
 
 RL_Real::RL_Real()
 #if defined(USE_ROS2) && defined(USE_ROS)
@@ -300,20 +301,33 @@ torch::Tensor RL_Real::Forward()
     if (this->onnx_engine.IsModelLoaded()) {
         try {
             std::vector<float> clamped_obs = this->ComputeObservationFloat();
-            std::vector<float> actions;
-            
+            float motion_step = static_cast<float>(this->episode_length_buf);
+
+            std::vector<Ort::Value> policy_output;
             if (!this->params.observations_history.empty()) {
                 torch::Tensor obs_tensor = this->ComputeObservation();
                 this->history_obs_buf.insert(obs_tensor);
                 this->history_obs = this->history_obs_buf.get_obs_vec(this->params.observations_history);
                 std::vector<float> history_obs_vec = this->TensorToVector(this->history_obs);
                 std::vector<int64_t> input_shape = {1, static_cast<int64_t>(history_obs_vec.size())};
-                actions = this->onnx_engine.Forward(history_obs_vec, input_shape);
+                policy_output = this->onnx_engine.Forward(history_obs_vec, motion_step);
             } else {
                 std::vector<int64_t> input_shape = {1, static_cast<int64_t>(clamped_obs.size())};
-                actions = this->onnx_engine.Forward(clamped_obs, input_shape);
+                policy_output = this->onnx_engine.Forward(clamped_obs, motion_step);
             }
             
+            auto actions = this->onnx_engine.ExtractTensorData(policy_output[0]);
+            auto body_quat_w = this->onnx_engine.ExtractTensorData(policy_output[4]);
+
+            std::vector<float> motion_anchor_quat_w = {body_quat_w[28], 
+                                                        body_quat_w[29],
+                                                        body_quat_w[30],
+                                                        body_quat_w[31]};
+
+            this->ref_joint_pos = this->VectorToTensor(this->onnx_engine.ExtractTensorData(policy_output[1]), {1, 29});
+            this->ref_joint_vel = this->VectorToTensor(this->onnx_engine.ExtractTensorData(policy_output[2]), {1, 29});
+            this->ref_body_quat_w = this->VectorToTensor(motion_anchor_quat_w, {1, 4});
+
             // Convert back to tensor
             torch::Tensor actions_tensor = this->VectorToTensor(actions, {1, static_cast<int64_t>(actions.size())});
             

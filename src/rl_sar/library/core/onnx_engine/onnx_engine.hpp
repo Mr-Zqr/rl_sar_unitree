@@ -22,10 +22,28 @@ public:
     ~ONNXInferenceEngine();
     
     void LoadModel(const std::string& model_path);
-    std::vector<float> Forward(const std::vector<float>& input_data, 
-                              const std::vector<int64_t>& input_shape);
+#ifdef USE_ONNXRUNTIME
+    std::vector<Ort::Value> FirstOutput();
+#else
+    std::vector<float> FirstOutput();
+#endif
+    std::vector<Ort::Value> Forward(const std::vector<float>& obs, 
+                                const float& time_step);
     
     bool IsModelLoaded() const { return model_loaded_; }
+    
+#ifdef USE_ONNXRUNTIME
+    // Helper methods for working with output tensors
+    static std::vector<float> ExtractTensorData(const Ort::Value& tensor);
+    static std::vector<int64_t> GetTensorShape(const Ort::Value& tensor);
+    static size_t GetTensorElementCount(const Ort::Value& tensor);
+    static ONNXTensorElementDataType GetTensorDataType(const Ort::Value& tensor);
+    static std::string GetTensorDataTypeString(const Ort::Value& tensor);
+    
+    // Get output names for indexing the results
+    const std::vector<std::string>& GetOutputNames() const { return output_names_; }
+    const std::vector<std::string>& GetInputNames() const { return input_names_; }
+#endif
     
 private:
 #ifdef USE_ONNXRUNTIME

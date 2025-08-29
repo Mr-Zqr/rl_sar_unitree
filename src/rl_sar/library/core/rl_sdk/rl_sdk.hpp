@@ -166,6 +166,8 @@ struct Observations
     torch::Tensor dof_pos;
     torch::Tensor dof_vel;
     torch::Tensor actions;
+    torch::Tensor motion_anchor_ori_b;
+    torch::Tensor commands_motion;
 };
 
 class RL
@@ -204,6 +206,8 @@ public:
     void StateController(const RobotState<double> *state, RobotCommand<double> *command);
     void ComputeOutput(const torch::Tensor &actions, torch::Tensor &output_dof_pos, torch::Tensor &output_dof_vel, torch::Tensor &output_dof_tau);
     torch::Tensor QuatRotateInverse(torch::Tensor q, torch::Tensor v);
+    torch::Tensor QuatInverseTimeQuat(torch::Tensor q01, torch::Tensor q02);
+    torch::Tensor Quat2MatTwoColumn(torch::Tensor q);
 
     // yaml params
     void ReadYamlBase(std::string robot_name);
@@ -246,6 +250,15 @@ public:
     torch::Tensor output_dof_tau;
     torch::Tensor output_dof_pos;
     torch::Tensor output_dof_vel;
+
+    // beyond mimic motion data
+    std::vector<std::string> motion_output_names;
+    torch::Tensor ref_joint_pos;
+    torch::Tensor ref_joint_vel;
+    // std::vector<float> body_pos_w;
+    torch::Tensor ref_body_quat_w;
+    // std::vector<float> body_lin_vel_w;
+    // std::vector<float> body_ang_vel_w;
 };
 
 class RLFSMState : public FSMState
