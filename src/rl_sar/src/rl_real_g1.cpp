@@ -328,22 +328,21 @@ torch::Tensor RL_Real::Forward()
 
     // Try ONNX inference first if model is loaded
     if (this->onnx_engine.IsModelLoaded()) {
-        try {
-            std::vector<float> clamped_obs = this->ComputeObservationFloat();
+        // try {
+            std::vector<float> clamped_obs_float = this->ComputeObservationFloat();
             float motion_step = static_cast<float>(this->episode_length_buf);
 
             std::vector<Ort::Value> policy_output;
-            if (!this->params.observations_history.empty()) {
-                torch::Tensor obs_tensor = this->ComputeObservation();
-                this->history_obs_buf.insert(obs_tensor);
-                this->history_obs = this->history_obs_buf.get_obs_vec(this->params.observations_history);
-                std::vector<float> history_obs_vec = this->TensorToVector(this->history_obs);
-                std::vector<int64_t> input_shape = {1, static_cast<int64_t>(history_obs_vec.size())};
-                policy_output = this->onnx_engine.Forward(history_obs_vec, motion_step);
-            } else {
-                std::vector<int64_t> input_shape = {1, static_cast<int64_t>(clamped_obs.size())};
-                policy_output = this->onnx_engine.Forward(clamped_obs, motion_step);
-            }
+            // if (!this->params.observations_history.empty()) {
+            //     torch::Tensor obs_tensor = this->ComputeObservation();
+            //     this->history_obs_buf.insert(obs_tensor);
+            //     this->history_obs = this->history_obs_buf.get_obs_vec(this->params.observations_history);
+            //     std::vector<float> history_obs_vec = this->TensorToVector(this->history_obs);
+            //     std::vector<int64_t> input_shape = {1, static_cast<int64_t>(history_obs_vec.size())};
+            //     policy_output = this->onnx_engine.Forward(history_obs_vec, motion_step);
+            // } else {
+                policy_output = this->onnx_engine.Forward(clamped_obs_float, motion_step);
+            // }
             
             auto actions = this->onnx_engine.ExtractTensorData(policy_output[0]);
             auto body_quat_w = this->onnx_engine.ExtractTensorData(policy_output[4]);
@@ -361,14 +360,14 @@ torch::Tensor RL_Real::Forward()
             torch::Tensor actions_tensor = this->VectorToTensor(actions, {1, 29});
 
             // Apply clipping
-            // if (this->params.clip_actions_upper.numel() != 0 && this->params.clip_actions_lower.numel() != 0) {
-            //     return torch::clamp(actions_tensor, this->params.clip_actions_lower, this->params.clip_actions_upper);
-            // } else {
+            if (this->params.clip_actions_upper.numel() != 0 && this->params.clip_actions_lower.numel() != 0) {
+                return torch::clamp(actions_tensor, this->params.clip_actions_lower, this->params.clip_actions_upper);
+            } else {
                 return actions_tensor;
-            // }
-        } catch (const std::exception& e) {
-            std::cerr << "[Forward] ONNX inference failed: " << e.what() << ", falling back to PyTorch" << std::endl;
-        }
+            }
+        // } catch (const std::exception& e) {
+        //     std::cerr << "[Forward] ONNX inference failed: " << e.what() << ", falling back to PyTorch" << std::endl;
+        // }
     }
 
     // Fallback to PyTorch inference only if PyTorch model is loaded
