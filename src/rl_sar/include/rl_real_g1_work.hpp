@@ -3,8 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// not work
-
 #ifndef RL_REAL_G1_HPP
 #define RL_REAL_G1_HPP
 
@@ -73,7 +71,7 @@ typedef union
     uint16_t value;
 } xKeySwitchUnion;
 
-// 40 Byte (now used 24Bbeyonddance
+// 40 Byte (now used 24B)
 typedef struct
 {
     uint8_t head[2];

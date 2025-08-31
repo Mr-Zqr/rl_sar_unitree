@@ -10,7 +10,8 @@
 #include <iomanip>
 #include <climits>
 #include <cstring>
-#ifdef USE_ONNXRUNTIME
+
+// #ifdef USE_ONNXRUNTIME
 
 ONNXInferenceEngine::ONNXInferenceEngine() 
     : env_(ORT_LOGGING_LEVEL_WARNING, "RL_SAR_ONNX"),
@@ -500,33 +501,33 @@ std::string ONNXInferenceEngine::GetTensorDataTypeString(const Ort::Value& tenso
     }
 }
 
-#else // USE_ONNXRUNTIME not defined
+// #else // USE_ONNXRUNTIME not defined
 
 // Dummy implementation when ONNX Runtime is not available
-ONNXInferenceEngine::ONNXInferenceEngine() : model_loaded_(false)
-{
-    std::cout << "[ONNX Engine] ONNX Runtime not available, using PyTorch only" << std::endl;
-}
+// ONNXInferenceEngine::ONNXInferenceEngine() : model_loaded_(false)
+// {
+//     std::cout << "[ONNX Engine] ONNX Runtime not available, using PyTorch only" << std::endl;
+// }
 
-ONNXInferenceEngine::~ONNXInferenceEngine() 
-{
-}
+// ONNXInferenceEngine::~ONNXInferenceEngine() 
+// {
+// }
 
-void ONNXInferenceEngine::LoadModel(const std::string& model_path) 
-{
-    std::cout << "[ONNX Engine] ONNX Runtime not available, cannot load " << model_path << std::endl;
-    model_loaded_ = false;
-}
+// void ONNXInferenceEngine::LoadModel(const std::string& model_path) 
+// {
+//     std::cout << "[ONNX Engine] ONNX Runtime not available, cannot load " << model_path << std::endl;
+//     model_loaded_ = false;
+// }
 
-std::vector<float> ONNXInferenceEngine::FirstOutput() 
-{
-    throw std::runtime_error("ONNX Runtime not available");
-}
+// std::vector<float> ONNXInferenceEngine::FirstOutput() 
+// {
+//     throw std::runtime_error("ONNX Runtime not available");
+// }
 
-std::vector<float> ONNXInferenceEngine::Forward(const std::vector<float>& input_data, 
-                                               const std::vector<int64_t>& input_shape) 
-{
-    throw std::runtime_error("ONNX Runtime not available");
-}
+// std::vector<float> ONNXInferenceEngine::Forward(const std::vector<float>& input_data, 
+//                                                const std::vector<int64_t>& input_shape) 
+// {
+//     throw std::runtime_error("ONNX Runtime not available");
+// }
 
-#endif // USE_ONNXRUNTIME
+// #endif // USE_ONNXRUNTIME

@@ -3,15 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// not work
-
 #include "rl_real_g1.hpp"
-// #include "onnxruntime_cxx_api.h"
-#include "/home/unitree/lib/libonnxruntime/include/onnxruntime_cxx_api.h"
-
-
-// 全局指针用于信号处理
-// RL_Real* g_rl_real_instance = nullptr;
 
 RL_Real::RL_Real()
 #if defined(USE_ROS2) && defined(USE_ROS)
@@ -123,6 +115,8 @@ void RL_Real::GetState(RobotState<double> *state)
         }
         this->mode_machine = this->unitree_low_state.mode_machine();
     }
+    std::cout << "set mode state: " << unsigned(this->mode_machine) << std::endl;
+    std::cout << "recieved mode state: " << unsigned(this->unitree_low_state.mode_machine()) << std::endl;
 
     memcpy(this->remote_data_rx.buff, &unitree_low_state.wireless_remote()[0], 40);
     this->gamepad.update(this->remote_data_rx.RF_RX);
@@ -303,55 +297,6 @@ void RL_Real::RunModel()
 torch::Tensor RL_Real::Forward()
 {
     torch::autograd::GradMode::set_enabled(false);
-
-    // Try ONNX inference first if model is loaded
-    if (this->onnx_engine.IsModelLoaded()) {
-        // try {
-            std::vector<float> clamped_obs_float = this->ComputeObservationFloat();
-            float motion_step = static_cast<float>(this->episode_length_buf);
-
-            std::vector<Ort::Value> policy_output;
-            // if (!this->params.observations_history.empty()) {
-            //     torch::Tensor obs_tensor = this->ComputeObservation();
-            //     this->history_obs_buf.insert(obs_tensor);
-            //     this->history_obs = this->history_obs_buf.get_obs_vec(this->params.observations_history);
-            //     std::vector<float> history_obs_vec = this->TensorToVector(this->history_obs);
-            //     std::vector<int64_t> input_shape = {1, static_cast<int64_t>(history_obs_vec.size())};
-            //     policy_output = this->onnx_engine.Forward(history_obs_vec, motion_step);
-            // } else {
-                policy_output = this->onnx_engine.Forward(clamped_obs_float, motion_step);
-            // }
-            
-            auto actions = this->onnx_engine.ExtractTensorData(policy_output[0]);
-            auto body_quat_w = this->onnx_engine.ExtractTensorData(policy_output[4]);
-
-            std::vector<float> motion_anchor_quat_w = {body_quat_w[28], 
-                                                        body_quat_w[29],
-                                                        body_quat_w[30],
-                                                        body_quat_w[31]};
-
-            this->ref_joint_pos = this->VectorToTensor(this->onnx_engine.ExtractTensorData(policy_output[1]), {1, 29});
-            this->ref_joint_vel = this->VectorToTensor(this->onnx_engine.ExtractTensorData(policy_output[2]), {1, 29});
-            this->ref_body_quat_w = this->VectorToTensor(motion_anchor_quat_w, {1, 4});
-
-            // Convert back to tensor
-            torch::Tensor actions_tensor = this->VectorToTensor(actions, {1, 29});
-
-            // Apply clipping
-            if (this->params.clip_actions_upper.numel() != 0 && this->params.clip_actions_lower.numel() != 0) {
-                return torch::clamp(actions_tensor, this->params.clip_actions_lower, this->params.clip_actions_upper);
-            } else {
-                return actions_tensor;
-            }
-        // } catch (const std::exception& e) {
-        //     std::cerr << "[Forward] ONNX inference failed: " << e.what() << ", falling back to PyTorch" << std::endl;
-        // }
-    }
-
-    // Fallback to PyTorch inference only if PyTorch model is loaded
-    if (!this->pytorch_model_loaded) {
-        throw std::runtime_error("No valid inference model available (neither ONNX nor PyTorch model loaded)");
-    }
 
     torch::Tensor clamped_obs = this->ComputeObservation();
 

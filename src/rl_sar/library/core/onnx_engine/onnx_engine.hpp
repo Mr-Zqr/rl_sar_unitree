@@ -6,9 +6,10 @@
 #ifndef ONNX_ENGINE_HPP
 #define ONNX_ENGINE_HPP
 
-#ifdef USE_ONNXRUNTIME
-#include <onnxruntime_cxx_api.h>
-#endif
+// #ifdef USE_ONNXRUNTIME
+// #include <onnxruntime_cxx_api.h>
+#include "/home/unitree/lib/libonnxruntime/include/onnxruntime_cxx_api.h"
+// #endif
 
 #include <vector>
 #include <memory>
@@ -22,17 +23,18 @@ public:
     ~ONNXInferenceEngine();
     
     void LoadModel(const std::string& model_path);
-#ifdef USE_ONNXRUNTIME
+// #ifdef USE_ONNXRUNTIME
     std::vector<Ort::Value> FirstOutput();
-#else
-    std::vector<float> FirstOutput();
-#endif
     std::vector<Ort::Value> Forward(const std::vector<float>& obs, 
-                                const float& time_step);
+                                               const float & time_step);
+
+// #else
+    // std::vector<Ort::Value> FirstOutput();
+// #endif
     
     bool IsModelLoaded() const { return model_loaded_; }
     
-#ifdef USE_ONNXRUNTIME
+// #ifdef USE_ONNXRUNTIME
     // Helper methods for working with output tensors
     static std::vector<float> ExtractTensorData(const Ort::Value& tensor);
     static std::vector<int64_t> GetTensorShape(const Ort::Value& tensor);
@@ -43,10 +45,10 @@ public:
     // Get output names for indexing the results
     const std::vector<std::string>& GetOutputNames() const { return output_names_; }
     const std::vector<std::string>& GetInputNames() const { return input_names_; }
-#endif
+// #endif
     
 private:
-#ifdef USE_ONNXRUNTIME
+// #ifdef USE_ONNXRUNTIME
     Ort::Env env_;
     std::unique_ptr<Ort::Session> session_;
     Ort::SessionOptions session_options_;
@@ -66,4 +68,4 @@ private:
     bool model_loaded_;
 };
 
-#endif // ONNX_ENGINE_HPP
+// #endif // ONNX_ENGINE_HPP

@@ -79,7 +79,7 @@ find_package(Threads REQUIRED)
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
 # ONNX Runtime configuration
-set(ONNXRUNTIME_ROOT_PATH "/home/zqr/apps/onnxruntime" CACHE PATH "Path to ONNX Runtime installation")
+set(ONNXRUNTIME_ROOT_PATH "/home/unitree/lib/libonnxruntime" CACHE PATH "Path to ONNX Runtime installation")
 
 # Check if ONNX Runtime exists at specified path
 if(EXISTS "${ONNXRUNTIME_ROOT_PATH}")
@@ -202,6 +202,7 @@ set_target_properties(onnx_engine PROPERTIES
 )
 if(ONNXRUNTIME_FOUND)
     target_link_libraries(onnx_engine PUBLIC ${ONNXRUNTIME_LIB})
+    link_directories(${ONNXRUNTIME_LIB})
     target_include_directories(onnx_engine PUBLIC ${ONNXRUNTIME_INCLUDE_DIR})
 else()
     # Create a dummy implementation if ONNX Runtime is not found
@@ -340,8 +341,8 @@ endif()
 #     endif()
 # endif()
 
-# add_executable(rl_real_g1 src/rl_real_g1.cpp)
-add_executable(rl_real_g1 src/rl_real_g1.cpp src/rl_logger.cpp)
+add_executable(rl_real_g1 src/rl_real_g1.cpp)
+# add_executable(rl_real_g1 src/rl_real_g1.cpp src/rl_logger.cpp)
 target_link_libraries(rl_real_g1
     unitree_sdk2
     rl_sdk
