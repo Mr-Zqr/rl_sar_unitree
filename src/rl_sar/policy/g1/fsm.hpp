@@ -375,7 +375,7 @@ public:
             rl.control.current_keyboard = Input::Keyboard::Num0;
         }
 
-        rl.motion_length = 5;
+        rl.motion_length = 100;
 
         // pos init
     }
@@ -384,8 +384,8 @@ public:
     {
         float motion_time = rl.episode_length_buf * rl.params.dt * rl.params.decimation;
         motion_time = fmin(motion_time, rl.motion_length);
-        float running_progress = motion_time / rl.motion_length * 100.0f;
-        std::cout << "\r\033[K" << std::flush << LOGGER::INFO << "Running progress "<< std::fixed << std::setprecision(2) << running_progress << "%" << std::flush;
+        // float running_progress = motion_time / rl.motion_length * 100.0f;
+        // std::cout << "\r\033[K" << std::flush << LOGGER::INFO << "Running progress "<< std::fixed << std::setprecision(2) << running_progress << "%" << std::flush;
 
         torch::Tensor _output_dof_pos, _output_dof_vel;
         if (rl.output_dof_pos_queue.try_pop(_output_dof_pos) && rl.output_dof_vel_queue.try_pop(_output_dof_vel))

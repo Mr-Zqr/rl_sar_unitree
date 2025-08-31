@@ -6,8 +6,8 @@
 // not work
 
 #include "rl_real_g1.hpp"
-// #include "onnxruntime_cxx_api.h"
-#include "/home/unitree/lib/libonnxruntime/include/onnxruntime_cxx_api.h"
+#include "onnxruntime_cxx_api.h"
+// #include "/home/unitree/lib/libonnxruntime/include/onnxruntime_cxx_api.h"
 
 
 // 全局指针用于信号处理

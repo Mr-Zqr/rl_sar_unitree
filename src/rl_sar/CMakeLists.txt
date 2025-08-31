@@ -78,8 +78,12 @@ find_package(TBB REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
-# ONNX Runtime configuration
-set(ONNXRUNTIME_ROOT_PATH "/home/unitree/lib/libonnxruntime" CACHE PATH "Path to ONNX Runtime installation")
+# 依据目标架构添加不同的头文件根目录
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+    set(ONNXRUNTIME_ROOT_PATH "/home/zqr/app/onnxruntime" CACHE PATH "Path to ONNX Runtime installation")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+    set(ONNXRUNTIME_ROOT_PATH "/home/unitree/lib/libonnxruntime" CACHE PATH "Path to ONNX Runtime installation")
+endif()
 
 # Check if ONNX Runtime exists at specified path
 if(EXISTS "${ONNXRUNTIME_ROOT_PATH}")

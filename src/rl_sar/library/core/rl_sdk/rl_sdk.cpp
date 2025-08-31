@@ -4,6 +4,7 @@
  */
 
 #include "rl_sdk.hpp"
+#include <ATen/core/TensorBody.h>
 #include <fstream>
 
 void RL::StateController(const RobotState<double>* state, RobotCommand<double>* command)
@@ -38,7 +39,7 @@ torch::Tensor RL::ComputeObservation()
         {
             // std::cout << "ang_vel_body: " << this->obs.ang_vel << std::endl;
             // std::cout << "ang_vel_body_scale: " << this->params.ang_vel_scale << std::endl;
-            obs_list.push_back(this->obs.ang_vel * this->params.ang_vel_scale);
+            obs_list.push_back(this->obs.ang_vel);
         }
         else if (observation == "ang_vel_world")
         {
@@ -61,13 +62,13 @@ torch::Tensor RL::ComputeObservation()
             }
             // std::cout << "dof_pos: " << dof_pos_rel << std::endl;
             // std::cout << "dof_pos_scale: " << this->params.dof_pos_scale << std::endl;
-            obs_list.push_back(dof_pos_rel * this->params.dof_pos_scale);
+            obs_list.push_back(dof_pos_rel);
         }
         else if (observation == "dof_vel")
         {
             // std::cout << "vel_scale: " << this->params.dof_vel_scale << std::endl;
             // std::cout << "dof_vel: " << this->obs.dof_vel << std::endl;
-            obs_list.push_back(this->obs.dof_vel * this->params.dof_vel_scale);
+            obs_list.push_back(this->obs.dof_vel);
         }
         else if (observation == "actions")
         {
@@ -114,12 +115,11 @@ torch::Tensor RL::ComputeObservation()
         else if (observation == "motion_anchor_ori_b")
         {
 
-            torch::Tensor motion_anchor_ori_b_quat = this->QuatInverseTimeQuat(this->obs.base_quat, this->ref_body_quat_w);
-            torch::Tensor motion_anchor_ori_b_mat = this->Quat2MatTwoColumn(motion_anchor_ori_b_quat);
-
-            // std::cout << "[RlSDK] ref_anchor_ori_w: " << this->ref_body_quat_w << std::endl;
             // std::cout << "[RlSDK] obs.base_quat: " << this->obs.base_quat << std::endl;
+            // std::cout << "[RlSDK] ref_anchor_ori_w: " << this->ref_body_quat_w << std::endl;
+            torch::Tensor motion_anchor_ori_b_quat = this->QuatInverseTimeQuat(this->obs.base_quat, this->ref_body_quat_w);
             // std::cout << "[RLSRK] motion_anchor_ori_b_quat: " << motion_anchor_ori_b_quat << std::endl;
+            torch::Tensor motion_anchor_ori_b_mat = this->Quat2MatTwoColumn(motion_anchor_ori_b_quat);
             // std::cout << "[RlSDK] mat: " << motion_anchor_ori_b_mat << std::endl;
 
             obs_list.push_back(motion_anchor_ori_b_mat);
@@ -128,7 +128,6 @@ torch::Tensor RL::ComputeObservation()
         {
             std::cerr << "[RL_SDK] Warning: Unknown observation type '" << observation << "'" << std::endl;
         }
-      
     }
 
     this->obs_dims.clear();
@@ -149,11 +148,15 @@ torch::Tensor RL::Quat2MatTwoColumn(torch::Tensor q)
     //  a10, a11,
     //  a20, a21]拼成[a00, a01, a10, a11, a20, a21]返回
 
+    // 首先对四元数进行归一化，确保是单位四元数
+    torch::Tensor q_norm = torch::norm(q, 2, 1, true);
+    torch::Tensor q_normalized = q / q_norm;
+
     // Extract quaternion components (wxyz format)
-    torch::Tensor w = q.index({torch::indexing::Slice(), 0});
-    torch::Tensor x = q.index({torch::indexing::Slice(), 1});
-    torch::Tensor y = q.index({torch::indexing::Slice(), 2});
-    torch::Tensor z = q.index({torch::indexing::Slice(), 3});
+    torch::Tensor w = q_normalized.index({torch::indexing::Slice(), 0});
+    torch::Tensor x = q_normalized.index({torch::indexing::Slice(), 1});
+    torch::Tensor y = q_normalized.index({torch::indexing::Slice(), 2});
+    torch::Tensor z = q_normalized.index({torch::indexing::Slice(), 3});
     
     // Calculate rotation matrix elements
     // First column (x-axis)
@@ -165,7 +168,22 @@ torch::Tensor RL::Quat2MatTwoColumn(torch::Tensor q)
     torch::Tensor a01 = 2 * (x * y - w * z);      // R[0,1]
     torch::Tensor a11 = 1 - 2 * (x * x + z * z);  // R[1,1]
     torch::Tensor a21 = 2 * (y * z + w * x);      // R[2,1]
+
+    // 计算第三列（修正公式）：
+    torch::Tensor a02 = 2 * (x * z + w * y);      // R[0,2] - 修正的公式
+    torch::Tensor a12 = 2 * (y * z - w * x);      // R[1,2]
+    torch::Tensor a22 = 1 - 2 * (x * x + y * y);  // R[2,2]
+
+    // 计算矩阵的行列式
+    torch::Tensor det = a00 * (a11 * a22 - a12 * a21) -
+                         a01 * (a10 * a22 - a12 * a20) +
+                         a02 * (a10 * a21 - a11 * a20);
     
+
+    // 检查行列式是否接近1（允许一定误差）
+    torch::Tensor det_error = torch::abs(det - 2.0);
+    auto det_error_scalar = det_error.item<float>();
+
     // Stack into [a00, a01, a10, a11, a20, a21] format
     return torch::stack({a00, a01, a10, a11, a20, a21}, -1);
 }
@@ -250,18 +268,18 @@ void RL::InitRL(std::string robot_path)
             }
 
             // Get all output tensors for ref motion data
-            auto outputs = this->onnx_engine.FirstOutput();
+            // auto outputs = this->onnx_engine.FirstOutput();
 
-            auto body_quat_w = this->onnx_engine.ExtractTensorData(outputs[4]);
+            // auto body_quat_w = this->onnx_engine.ExtractTensorData(outputs[4]);
 
-            std::vector<float> motion_anchor_quat_w = {body_quat_w[28], 
-                                                        body_quat_w[29],
-                                                        body_quat_w[30],
-                                                        body_quat_w[31]};
+            // std::vector<float> motion_anchor_quat_w = {body_quat_w[28], 
+            //                                             body_quat_w[29],
+            //                                             body_quat_w[30],
+            //                                             body_quat_w[31]};
 
-            this->ref_joint_pos = this->VectorToTensor(this->onnx_engine.ExtractTensorData(outputs[1]), {1, 29});
-            this->ref_joint_vel = this->VectorToTensor(this->onnx_engine.ExtractTensorData(outputs[2]), {1, 29});
-            this->ref_body_quat_w = this->VectorToTensor(motion_anchor_quat_w, {1, 4});
+            // this->ref_joint_pos = this->VectorToTensor(this->onnx_engine.ExtractTensorData(outputs[1]), {1, 29});
+            // this->ref_joint_vel = this->VectorToTensor(this->onnx_engine.ExtractTensorData(outputs[2]), {1, 29});
+            // this->ref_body_quat_w = this->VectorToTensor(motion_anchor_quat_w, {1, 4});
 
             // Try to find corresponding PyTorch model for fallback
             std::string pt_model_path = model_path;
@@ -373,28 +391,45 @@ torch::Tensor RL::QuatRotateInverse(torch::Tensor q, torch::Tensor v)
 
 torch::Tensor RL::QuatInverseTimeQuat(torch::Tensor q01, torch::Tensor q02)
 {
-    // Extract components from q01 (wxyz format)
-    torch::Tensor q01_w = q01.index({torch::indexing::Slice(), 0});
-    torch::Tensor q01_x = q01.index({torch::indexing::Slice(), 1});
-    torch::Tensor q01_y = q01.index({torch::indexing::Slice(), 2});
-    torch::Tensor q01_z = q01.index({torch::indexing::Slice(), 3});
-    
+    // inverse q01 to get q10
+    torch::Tensor q10 = torch::cat({q01.index({torch::indexing::Slice(), 0}).unsqueeze(-1),
+                                      -q01.index({torch::indexing::Slice(), 1}).unsqueeze(-1),
+                                      -q01.index({torch::indexing::Slice(), 2}).unsqueeze(-1),
+                                      -q01.index({torch::indexing::Slice(), 3}).unsqueeze(-1)}, -1);
+
+    // Extract components from q10 (wxyz format)
+    torch::Tensor w1 = q10.index({torch::indexing::Slice(), 0});
+    torch::Tensor x1 = q10.index({torch::indexing::Slice(), 1});
+    torch::Tensor y1 = q10.index({torch::indexing::Slice(), 2});
+    torch::Tensor z1 = q10.index({torch::indexing::Slice(), 3});
+
     // Extract components from q02 (wxyz format)
-    torch::Tensor q02_w = q02.index({torch::indexing::Slice(), 0});
-    torch::Tensor q02_x = q02.index({torch::indexing::Slice(), 1});
-    torch::Tensor q02_y = q02.index({torch::indexing::Slice(), 2});
-    torch::Tensor q02_z = q02.index({torch::indexing::Slice(), 3});
-    
+    torch::Tensor w2 = q02.index({torch::indexing::Slice(), 0});
+    torch::Tensor x2 = q02.index({torch::indexing::Slice(), 1});
+    torch::Tensor y2 = q02.index({torch::indexing::Slice(), 2});
+    torch::Tensor z2 = q02.index({torch::indexing::Slice(), 3});
+
     // Compute q01^(-1) * q02
     // For unit quaternions, q^(-1) = [w, -x, -y, -z]
     // Quaternion multiplication: q01^(-1) * q02
-    torch::Tensor result_w = q01_w * q02_w + q01_x * q02_x + q01_y * q02_y + q01_z * q02_z;
-    torch::Tensor result_x = q01_w * q02_x - q01_x * q02_w - q01_y * q02_z + q01_z * q02_y;
-    torch::Tensor result_y = q01_w * q02_y + q01_x * q02_z - q01_y * q02_w - q01_z * q02_x;
-    torch::Tensor result_z = q01_w * q02_z - q01_x * q02_y + q01_y * q02_x - q01_z * q02_w;
+    torch::Tensor ww = (z1 + x1) * (x2 + y2);
+    torch::Tensor yy = (w1 - y1) * (w2 + z2);
+    torch::Tensor zz = (w1 + y1) * (w2 - z2);
+    torch::Tensor xx = ww + yy + zz;
+    torch::Tensor qq = 0.5 * (xx + (z1 - x1) * (x2 - y2));
+    torch::Tensor w = qq - ww + (z1 - y1) * (y2 - z2);
+    torch::Tensor x = qq - xx + (x1 + w1) * (x2 + w2);
+    torch::Tensor y = qq - yy + (w1 - x1) * (y2 + z2);
+    torch::Tensor z = qq - zz + (z1 + y1) * (w2 - x2);
+
+    // 手动归一化
+    // torch::Tensor norm = torch::sqrt(w * w + x * x + y * y + z * z);
+    torch::Tensor result = torch::stack({w, x, y, z}, -1);
+    // result = result / norm.unsqueeze(-1);
+    return result;
 
     // Stack the components back to quaternion tensor (wxyz format)
-    return torch::stack({result_w, result_x, result_y, result_z}, -1);
+    // return torch::stack({result_w, result_x, result_y, result_z}, -1);
 }
 
 void RL::TorqueProtect(torch::Tensor origin_output_dof_tau)

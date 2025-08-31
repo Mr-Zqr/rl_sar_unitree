@@ -7,8 +7,8 @@
 #define ONNX_ENGINE_HPP
 
 // #ifdef USE_ONNXRUNTIME
-// #include <onnxruntime_cxx_api.h>
-#include "/home/unitree/lib/libonnxruntime/include/onnxruntime_cxx_api.h"
+#include <onnxruntime_cxx_api.h>
+// #include "/home/unitree/lib/libonnxruntime/include/onnxruntime_cxx_api.h"
 // #endif
 
 #include <vector>

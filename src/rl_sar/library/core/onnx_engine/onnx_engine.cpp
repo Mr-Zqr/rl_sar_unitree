@@ -7,7 +7,6 @@
 #include <stdexcept>
 #include <fstream>
 #include <iostream>
-#include <iomanip>
 #include <climits>
 #include <cstring>
 
@@ -366,7 +365,7 @@ std::vector<Ort::Value> ONNXInferenceEngine::Forward(const std::vector<float>& o
 
 
         // Keep data alive during inference - similar to FirstOutput approach
-        std::vector<float> time_step_data = { time_step+1};
+        std::vector<float> time_step_data = { time_step};
 
         auto input_tensor_obs = Ort::Value::CreateTensor<float>(
             memory_info_,
