@@ -54,6 +54,7 @@ RL_Real::RL_Real()
     // init robot
     this->mode_pr = Mode::PR;
     this->mode_machine = 0;
+    this->calc_anchor_called = 0;
     this->InitLowCmd();
     this->InitOutputs();
     this->InitControl();
@@ -275,6 +276,14 @@ void RL_Real::RunModel()
         this->obs.dof_vel = torch::tensor(this->robot_state.motor_state.dq).narrow(0, 0, this->params.num_of_dofs).unsqueeze(0);
 
         this->obs.actions = this->Forward();
+        // std::cout << "actions:";
+        // for (int i = 0; i < this->obs.actions.size(1); i++)
+        // {
+        //     std::cout << " " << this->obs.actions[0][i].item<float>();
+        // }
+
+        // std::cout << std::endl << std::endl;
+
         this->ComputeOutput(this->obs.actions, this->output_dof_pos, this->output_dof_vel, this->output_dof_tau);
 
         if (this->output_dof_pos.defined() && this->output_dof_pos.numel() > 0)

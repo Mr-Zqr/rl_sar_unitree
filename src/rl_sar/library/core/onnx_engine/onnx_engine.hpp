@@ -24,12 +24,11 @@ public:
     
     void LoadModel(const std::string& model_path);
 // #ifdef USE_ONNXRUNTIME
-    std::vector<Ort::Value> FirstOutput();
     std::vector<Ort::Value> Forward(const std::vector<float>& obs, 
                                                const float & time_step);
 
 // #else
-    // std::vector<Ort::Value> FirstOutput();
+    std::vector<Ort::Value> FirstOutput();
 // #endif
     
     bool IsModelLoaded() const { return model_loaded_; }

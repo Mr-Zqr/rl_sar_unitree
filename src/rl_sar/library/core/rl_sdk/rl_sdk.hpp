@@ -206,8 +206,10 @@ public:
     void StateController(const RobotState<double> *state, RobotCommand<double> *command);
     void ComputeOutput(const torch::Tensor &actions, torch::Tensor &output_dof_pos, torch::Tensor &output_dof_vel, torch::Tensor &output_dof_tau);
     torch::Tensor QuatRotateInverse(torch::Tensor q, torch::Tensor v);
-    torch::Tensor QuatInverseTimeQuat(torch::Tensor q01, torch::Tensor q02);
+    torch::Tensor QuatTimeQuat(torch::Tensor q01, torch::Tensor q02);
     torch::Tensor Quat2MatTwoColumn(torch::Tensor q);
+    torch::Tensor QuatInverse(torch::Tensor q);
+    torch::Tensor GetYawQuaternion(const torch::Tensor &q);
 
     // yaml params
     void ReadYamlBase(std::string robot_name);
@@ -257,6 +259,8 @@ public:
     torch::Tensor ref_joint_vel;
     // std::vector<float> body_pos_w;
     torch::Tensor ref_body_quat_w;
+    int calc_anchor_called;
+    torch::Tensor real_world_to_init;
     // std::vector<float> body_lin_vel_w;
     // std::vector<float> body_ang_vel_w;
 };
