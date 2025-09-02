@@ -18,6 +18,8 @@
 #include "fsm_core.hpp"
 #include "observation_buffer.hpp"
 #include "onnx_engine.hpp"
+#include <Eigen/Dense>
+#include <Eigen/Core>
 
 namespace LOGGER
 {
@@ -50,7 +52,7 @@ struct RobotState
         std::vector<T> quaternion = {1.0, 0.0, 0.0, 0.0}; // w, x, y, z
         std::vector<T> gyroscope = {0.0, 0.0, 0.0};
         std::vector<T> accelerometer = {0.0, 0.0, 0.0};
-    } imu;
+    } imu, torso_imu;
 
     struct MotorState
     {
@@ -163,6 +165,7 @@ struct Observations
     torch::Tensor gravity_vec;
     torch::Tensor commands;
     torch::Tensor base_quat;
+    torch::Tensor torso_quat;
     torch::Tensor dof_pos;
     torch::Tensor dof_vel;
     torch::Tensor actions;
@@ -192,6 +195,8 @@ public:
     float running_percent = 0.0f;
     bool rl_init_done = false;
 
+    // Quaternion utils for efficient computation
+
     // init
     void InitObservations();
     void InitOutputs();
@@ -206,10 +211,6 @@ public:
     void StateController(const RobotState<double> *state, RobotCommand<double> *command);
     void ComputeOutput(const torch::Tensor &actions, torch::Tensor &output_dof_pos, torch::Tensor &output_dof_vel, torch::Tensor &output_dof_tau);
     torch::Tensor QuatRotateInverse(torch::Tensor q, torch::Tensor v);
-    torch::Tensor QuatTimeQuat(torch::Tensor q01, torch::Tensor q02);
-    torch::Tensor Quat2MatTwoColumn(torch::Tensor q);
-    torch::Tensor QuatInverse(torch::Tensor q);
-    torch::Tensor GetYawQuaternion(const torch::Tensor &q);
 
     // yaml params
     void ReadYamlBase(std::string robot_name);
@@ -257,12 +258,14 @@ public:
     std::vector<std::string> motion_output_names;
     torch::Tensor ref_joint_pos;
     torch::Tensor ref_joint_vel;
-    // std::vector<float> body_pos_w;
     torch::Tensor ref_body_quat_w;
     int calc_anchor_called;
-    torch::Tensor real_world_to_init;
-    // std::vector<float> body_lin_vel_w;
-    // std::vector<float> body_ang_vel_w;
+    Eigen::Quaterniond torso_quat;
+    Eigen::Quaterniond ref_motion_quat;
+    Eigen::Matrix3d YawQuaternion(const Eigen::Quaterniond& q);
+    Eigen::Matrix3d init_to_world;
+    Eigen::Matrix3d motion_anchor_ori_b;
+    torch::Tensor motion_anchor_ori_b_mat;
 };
 
 class RLFSMState : public FSMState

@@ -6,6 +6,9 @@
 #include "rl_sdk.hpp"
 #include <ATen/core/TensorBody.h>
 #include <fstream>
+#include <vector>
+#include <Eigen/Dense>
+#include <Eigen/Geometry>
 
 void RL::StateController(const RobotState<double>* state, RobotCommand<double>* command)
 {
@@ -39,9 +42,8 @@ torch::Tensor RL::ComputeObservation()
         }
         else if (observation == "ang_vel_body")
         {
-            // std::cout << "ang_vel_body: " << this->obs.ang_vel << std::endl;
             // std::cout << "ang_vel_body_scale: " << this->params.ang_vel_scale << std::endl;
-            obs_list.push_back(this->obs.ang_vel);
+            obs_list.push_back(this->obs.ang_vel * this->params.ang_vel_scale);
         }
         else if (observation == "ang_vel_world")
         {
@@ -62,14 +64,12 @@ torch::Tensor RL::ComputeObservation()
             {
                 dof_pos_rel[0][i] = 0.0;
             }
-            // std::cout << "dof_pos: " << dof_pos_rel << std::endl;
             // std::cout << "dof_pos_scale: " << this->params.dof_pos_scale << std::endl;
             obs_list.push_back(dof_pos_rel);
         }
         else if (observation == "dof_vel")
         {
             // std::cout << "vel_scale: " << this->params.dof_vel_scale << std::endl;
-            // std::cout << "dof_vel: " << this->obs.dof_vel << std::endl;
             obs_list.push_back(this->obs.dof_vel);
         }
         else if (observation == "actions")
@@ -116,34 +116,31 @@ torch::Tensor RL::ComputeObservation()
         }
         else if (observation == "motion_anchor_ori_b")
         {
-            if (calc_anchor_called < 3)
+            // Use efficient quaternion utils for computation
+            std::cout << "torso quat: " << this->obs.torso_quat << std::endl;
+            std::cout << "pelvis quat: " << this->obs.base_quat << std::endl;
+            torso_quat = Eigen::Quaterniond(this->obs.torso_quat[0][0].item<double>(),
+                                                            this->obs.torso_quat[0][1].item<double>(),
+                                                            this->obs.torso_quat[0][2].item<double>(),
+                                                            this->obs.torso_quat[0][3].item<double>());
+            ref_motion_quat = Eigen::Quaterniond(this->ref_body_quat_w[0][0].item<double>(),
+                                                                this->ref_body_quat_w[0][1].item<double>(),
+                                                                this->ref_body_quat_w[0][2].item<double>(),
+                                                                this->ref_body_quat_w[0][3].item<double>());
+
+            if (this->calc_anchor_called < 3)
             {
-                torch::Tensor ref_init_to_anchor_yaw = this->GetYawQuaternion(this->ref_body_quat_w);
-                std::cout << "ref_init_to_anchor_yaw0: " << ref_init_to_anchor_yaw << std::endl;
-                torch::Tensor real_robot_anchor_yaw = this->GetYawQuaternion(this->obs.base_quat);
-
-                std::cout << "real_robot_anchor_yaw0: " << real_robot_anchor_yaw << std::endl;
-                torch::Tensor ref_anchor_to_init_yaw = this->QuatInverse(ref_init_to_anchor_yaw);
-
-                this->real_world_to_init = this->QuatTimeQuat(real_robot_anchor_yaw, ref_anchor_to_init_yaw);
-                std::cout << "real_world_to_init0: " << this->real_world_to_init << std::endl;
-                calc_anchor_called++;
+                auto init_to_anchor = this->YawQuaternion(ref_motion_quat);
+                auto world_to_anchor = this->YawQuaternion(torso_quat);
+                this->init_to_world = world_to_anchor * init_to_anchor.transpose();
             }
-            // std::cout << "real_world_to_init: " << this->real_world_to_init << std::endl;
-            // std::cout << "ref_body_quat_w: " << this->ref_body_quat_w << std::endl;
-            torch::Tensor world_to_motion_anchor = this->QuatTimeQuat(this->real_world_to_init, this->ref_body_quat_w);
-            // std::cout << "world_to_motion_anchor: " << world_to_motion_anchor << std::endl;    
 
-            // std::cout << "obs.base_quat: " << this->obs.base_quat << std::endl;
-            torch::Tensor real_anchor_world = this->QuatInverse(this->obs.base_quat);
-            // std::cout << "real_anchor_world: " << real_anchor_world << std::endl;
-
-            torch::Tensor motion_anchor_ori_b_quat = this->QuatTimeQuat(real_anchor_world, world_to_motion_anchor);
-            // std::cout << "motion_anchor_ori_b_quat: " << motion_anchor_ori_b_quat << std::endl;
-        
-
-            torch::Tensor motion_anchor_ori_b_mat = this->Quat2MatTwoColumn(motion_anchor_ori_b_quat);
-            // std::cout << "motion_anchor_ori_b_mat: " << motion_anchor_ori_b_mat << std::endl;
+            motion_anchor_ori_b = torso_quat.toRotationMatrix().transpose() * this->init_to_world * ref_motion_quat.toRotationMatrix();
+            motion_anchor_ori_b_mat = this->VectorToTensor(std::vector<float>{
+                motion_anchor_ori_b(0,0), motion_anchor_ori_b(0,1),
+                motion_anchor_ori_b(1,0), motion_anchor_ori_b(1,1),
+                motion_anchor_ori_b(2,0), motion_anchor_ori_b(2,1)
+            }, {1, 6});
 
             obs_list.push_back(motion_anchor_ori_b_mat);
         }
@@ -162,69 +159,13 @@ torch::Tensor RL::ComputeObservation()
 
     torch::Tensor obs = torch::cat(obs_list, 1);
     torch::Tensor clamped_obs = torch::clamp(obs, -this->params.clip_obs, this->params.clip_obs);
-    return clamped_obs;
+    return obs;
 }
 
-torch::Tensor RL::GetYawQuaternion(const torch::Tensor &q)
-{
-    // Handle both 1D and 2D tensors (batch dimension)
-    torch::Tensor q_flat = q.flatten();
-    
-    // Use the same data type as input tensor
-    auto dtype = q.dtype();
-    auto device = q.device();
-    
-    double w = q_flat[0].item<double>();
-    double x = q_flat[1].item<double>();
-    double y = q_flat[2].item<double>();
-    double z = q_flat[3].item<double>();
-
-    // Extract the yaw angle from the quaternion
-    double yaw = std::atan2(2.0 * (w*z + x*y), 1.0 - 2.0 * (y*y + z*z));
-    double half_yaw = yaw * 0.5;
-    
-    // Create tensor with same dtype and device as input
-    torch::Tensor yaw_quat = torch::tensor({std::cos(half_yaw), 0.0, 0.0, std::sin(half_yaw)},
-                                           torch::TensorOptions().dtype(dtype).device(device));
-    //  torch::Tensor yaw_norm = torch::norm(yaw_quat, 2, -1, true);
-    // torch::Tensor yaw_quat_normalized = yaw_quat / yaw_norm;
-    
-    if (q.dim() > 1) {
-        yaw_quat = yaw_quat.unsqueeze(0);  // Add batch dimension if input had one
-    }
-    return yaw_quat;
-}
-
-torch::Tensor RL::Quat2MatTwoColumn(torch::Tensor q)
-{
-    // 将 w x y z形式的四元数转换为旋转矩阵，并将前两列 
-    // [a00, a01, 
-    //  a10, a11,
-    //  a20, a21]拼成[a00, a01, a10, a11, a20, a21]返回
-
-    // 首先对四元数进行归一化，确保是单位四元数
-    torch::Tensor q_norm = torch::norm(q, 2, -1, true);
-    torch::Tensor q_normalized = q / q_norm;
-
-    // Extract quaternion components (wxyz format)
-    torch::Tensor w = q_normalized.index({torch::indexing::Slice(), 0});
-    torch::Tensor x = q_normalized.index({torch::indexing::Slice(), 1});
-    torch::Tensor y = q_normalized.index({torch::indexing::Slice(), 2});
-    torch::Tensor z = q_normalized.index({torch::indexing::Slice(), 3});
-    
-    // Calculate rotation matrix elements
-    // First column (x-axis)
-    torch::Tensor a00 = 1 - 2 * (y * y + z * z);  // R[0,0]
-    torch::Tensor a10 = 2 * (x * y + w * z);      // R[1,0]
-    torch::Tensor a20 = 2 * (x * z - w * y);      // R[2,0]
-
-    // Second column (y-axis)
-    torch::Tensor a01 = 2 * (x * y - w * z);      // R[0,1]
-    torch::Tensor a11 = 1 - 2 * (x * x + z * z);  // R[1,1]
-    torch::Tensor a21 = 2 * (y * z + w * x);      // R[2,1]
-
-    // Stack into [a00, a01, a10, a11, a20, a21] format
-    return torch::stack({a00, a01, a10, a11, a20, a21}, -1);
+Eigen::Matrix3d RL::YawQuaternion(const Eigen::Quaterniond& q) {
+    Eigen::Vector3d euler = q.toRotationMatrix().eulerAngles(0, 1, 2);
+    Eigen::AngleAxisd yawAngle(euler[2], Eigen::Vector3d::UnitZ());
+    return yawAngle.toRotationMatrix();
 }
 
 void RL::InitObservations()
@@ -240,7 +181,9 @@ void RL::InitObservations()
     this->ref_joint_pos = torch::zeros({1, this->params.num_of_dofs});
     this->ref_joint_vel = torch::zeros({1, this->params.num_of_dofs});
     this->ref_body_quat_w = torch::tensor({{1.0, 0.0, 0.0, 0.0}});
-    this->real_world_to_init = torch::tensor({{1.0, 0.0, 0.0, 0.0}});
+    this->init_to_world = Eigen::Matrix3d::Identity();
+    this->motion_anchor_ori_b = Eigen::Matrix3d::Identity();
+    this->motion_anchor_ori_b_mat = torch::tensor({{1.0, 0.0, 0.0, 1.0, 0.0, 0.0}});
     this->ComputeObservation();
 }
 
@@ -427,46 +370,6 @@ torch::Tensor RL::QuatRotateInverse(torch::Tensor q, torch::Tensor v)
     torch::Tensor b = torch::cross(q_vec, v, -1) * q_w.unsqueeze(-1) * 2.0;
     torch::Tensor c = q_vec * torch::bmm(q_vec.view({shape[0], 1, 3}), v.view({shape[0], 3, 1})).squeeze(-1) * 2.0;
     return a - b + c;
-}
-
-torch::Tensor RL::QuatInverse(torch::Tensor q)
-{
-    // Inverse of a unit quaternion is its conjugate
-    torch::Tensor w = q.index({torch::indexing::Slice(), 0});
-    torch::Tensor x = -q.index({torch::indexing::Slice(), 1});
-    torch::Tensor y = -q.index({torch::indexing::Slice(), 2});
-    torch::Tensor z = -q.index({torch::indexing::Slice(), 3});
-    torch::Tensor q_conjugate = torch::stack({w, x, y, z}, -1);
-    // q = q / norm.unsqueeze(-1);
-    return q_conjugate;
-}
-
-torch::Tensor RL::QuatTimeQuat(torch::Tensor q1, torch::Tensor q2)
-{
-    // Extract components from q1 (wxyz format)
-    torch::Tensor w1 = q1.index({torch::indexing::Slice(), 0});
-    torch::Tensor x1 = q1.index({torch::indexing::Slice(), 1});
-    torch::Tensor y1 = q1.index({torch::indexing::Slice(), 2});
-    torch::Tensor z1 = q1.index({torch::indexing::Slice(), 3});
-
-    // Extract components from q2 (wxyz format)
-    torch::Tensor w2 = q2.index({torch::indexing::Slice(), 0});
-    torch::Tensor x2 = q2.index({torch::indexing::Slice(), 1});
-    torch::Tensor y2 = q2.index({torch::indexing::Slice(), 2});
-    torch::Tensor z2 = q2.index({torch::indexing::Slice(), 3});
-
-    // Standard quaternion multiplication: q1 * q2
-    torch::Tensor w = w1*w2 - x1*x2 - y1*y2 - z1*z2;
-    torch::Tensor x = w1*x2 + x1*w2 + y1*z2 - z1*y2;
-    torch::Tensor y = w1*y2 - x1*z2 + y1*w2 + z1*x2;
-    torch::Tensor z = w1*z2 + x1*y2 - y1*x2 + z1*w2;
-
-    // 归一化四元数以防止数值误差累积
-    torch::Tensor result = torch::stack({w, x, y, z}, -1);
-    torch::Tensor norm = torch::norm(result, 2, -1, true);
-    result = result / norm;
-    
-    return result;
 }
 
 void RL::TorqueProtect(torch::Tensor origin_output_dof_tau)

@@ -170,6 +170,10 @@ void RL_Real::GetState(RobotState<double> *state)
     state->imu.quaternion[1] = this->unitree_low_state.imu_state().quaternion()[1]; // x
     state->imu.quaternion[2] = this->unitree_low_state.imu_state().quaternion()[2]; // y
     state->imu.quaternion[3] = this->unitree_low_state.imu_state().quaternion()[3]; // z
+    state->torso_imu.quaternion[0] = this->unitree_imu_torso.quaternion()[0]; // w
+    state->torso_imu.quaternion[1] = this->unitree_imu_torso.quaternion()[1]; // x
+    state->torso_imu.quaternion[2] = this->unitree_imu_torso.quaternion()[2]; // y
+    state->torso_imu.quaternion[3] = this->unitree_imu_torso.quaternion()[3]; // z
 
     for (int i = 0; i < 3; ++i)
     {
@@ -272,6 +276,7 @@ void RL_Real::RunModel()
             this->obs.commands = torch::tensor({{this->control.x, this->control.y, this->control.yaw}});
         }
         this->obs.base_quat = torch::tensor(this->robot_state.imu.quaternion).unsqueeze(0);
+        this->obs.torso_quat = torch::tensor(this->robot_state.torso_imu.quaternion).unsqueeze(0);
         this->obs.dof_pos = torch::tensor(this->robot_state.motor_state.q).narrow(0, 0, this->params.num_of_dofs).unsqueeze(0);
         this->obs.dof_vel = torch::tensor(this->robot_state.motor_state.dq).narrow(0, 0, this->params.num_of_dofs).unsqueeze(0);
 
@@ -320,16 +325,7 @@ torch::Tensor RL_Real::Forward()
             float motion_step = static_cast<float>(this->episode_length_buf);
 
             std::vector<Ort::Value> policy_output;
-            // if (!this->params.observations_history.empty()) {
-            //     torch::Tensor obs_tensor = this->ComputeObservation();
-            //     this->history_obs_buf.insert(obs_tensor);
-            //     this->history_obs = this->history_obs_buf.get_obs_vec(this->params.observations_history);
-            //     std::vector<float> history_obs_vec = this->TensorToVector(this->history_obs);
-            //     std::vector<int64_t> input_shape = {1, static_cast<int64_t>(history_obs_vec.size())};
-            //     policy_output = this->onnx_engine.Forward(history_obs_vec, motion_step);
-            // } else {
-                policy_output = this->onnx_engine.Forward(clamped_obs_float, motion_step);
-            // }
+            policy_output = this->onnx_engine.Forward(clamped_obs_float, motion_step);
             
             auto actions = this->onnx_engine.ExtractTensorData(policy_output[0]);
             auto body_quat_w = this->onnx_engine.ExtractTensorData(policy_output[4]);

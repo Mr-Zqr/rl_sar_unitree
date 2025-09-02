@@ -73,6 +73,7 @@ if(NOT USE_CMAKE)
     find_package(gazebo REQUIRED)
 endif()
 
+find_package(Eigen3 REQUIRED)
 find_package(Torch REQUIRED)
 find_package(TBB REQUIRED)
 find_package(Threads REQUIRED)
@@ -186,6 +187,7 @@ endif()
 
 include_directories(
     include
+    ${EIGEN3_INCLUDE_DIR}
     library/core/matplotlibcpp
     library/core/observation_buffer
     library/core/rl_sdk
@@ -229,6 +231,7 @@ target_link_libraries(rl_sdk PUBLIC
     Python3::Python
     Python3::Module
     TBB::tbb
+    Eigen3::Eigen
 )
 find_package(Python3 COMPONENTS NumPy)
 if(Python3_NumPy_FOUND)
