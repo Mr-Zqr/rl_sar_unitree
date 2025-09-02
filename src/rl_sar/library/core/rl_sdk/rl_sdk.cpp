@@ -118,11 +118,11 @@ torch::Tensor RL::ComputeObservation()
         {
             // Use efficient quaternion utils for computation
             std::cout << "torso quat: " << this->obs.torso_quat << std::endl;
-            std::cout << "pelvis quat: " << this->obs.base_quat << std::endl;
-            torso_quat = Eigen::Quaterniond(this->obs.torso_quat[0][0].item<double>(),
+            // std::cout << "pelvis quat: " << this->obs.base_quat << std::endl;
+            torso_quat = Eigen::Quaterniond(this->obs.torso_quat[0][3].item<double>(),
+                                                            this->obs.torso_quat[0][0].item<double>(),
                                                             this->obs.torso_quat[0][1].item<double>(),
-                                                            this->obs.torso_quat[0][2].item<double>(),
-                                                            this->obs.torso_quat[0][3].item<double>());
+                                                            this->obs.torso_quat[0][2].item<double>());
             ref_motion_quat = Eigen::Quaterniond(this->ref_body_quat_w[0][0].item<double>(),
                                                                 this->ref_body_quat_w[0][1].item<double>(),
                                                                 this->ref_body_quat_w[0][2].item<double>(),
@@ -175,6 +175,7 @@ void RL::InitObservations()
     this->obs.gravity_vec = torch::tensor({{0.0, 0.0, -1.0}});
     this->obs.commands = torch::tensor({{0.0, 0.0, 0.0}});
     this->obs.base_quat = torch::tensor({{1.0, 0.0, 0.0, 0.0}});
+    this->obs.torso_quat = torch::tensor({{1.0, 0.0, 0.0, 0.0}});
     this->obs.dof_pos = this->params.default_dof_pos;
     this->obs.dof_vel = torch::zeros({1, this->params.num_of_dofs});
     this->obs.actions = torch::zeros({1, this->params.num_of_dofs});

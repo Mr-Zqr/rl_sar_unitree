@@ -354,28 +354,28 @@ public:
 class RLFSMStateRL_RoboMimicDance : public RLFSMState
 {
 public:
-    RLFSMStateRL_RoboMimicDance(RL *rl) : RLFSMState(*rl, "RLFSMStateRL_RoboMimicDance") {}
+RLFSMStateRL_RoboMimicDance(RL *rl) : RLFSMState(*rl, "RLFSMStateRL_RoboMimicDance") {}
 
-    void Enter() override
+void Enter() override
+{
+    rl.episode_length_buf = 0;
+
+    // read params from yaml
+    rl.config_name = "robomimic/beyonddance";
+    std::string robot_path = rl.robot_name + "/" + rl.config_name;
+    try
     {
-        rl.episode_length_buf = 0;
+        rl.InitRL(robot_path);
+        rl.rl_init_done = true;
+    }
+    catch (const std::exception& e)
+    {
+        std::cout << LOGGER::ERROR << "InitRL() failed: " << e.what() << std::endl;
+        rl.rl_init_done = false;
+        rl.control.current_keyboard = Input::Keyboard::Num0;
+    }
 
-        // read params from yaml
-        rl.config_name = "robomimic/beyonddance";
-        std::string robot_path = rl.robot_name + "/" + rl.config_name;
-        try
-        {
-            rl.InitRL(robot_path);
-            rl.rl_init_done = true;
-        }
-        catch (const std::exception& e)
-        {
-            std::cout << LOGGER::ERROR << "InitRL() failed: " << e.what() << std::endl;
-            rl.rl_init_done = false;
-            rl.control.current_keyboard = Input::Keyboard::Num0;
-        }
-
-        rl.motion_length = 100;
+        rl.motion_length = 5;
 
         // pos init
     }
