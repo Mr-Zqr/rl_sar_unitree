@@ -375,7 +375,7 @@ void Enter() override
         rl.control.current_keyboard = Input::Keyboard::Num0;
     }
 
-        rl.motion_length = 5;
+        rl.motion_length = 500;
 
         // pos init
     }

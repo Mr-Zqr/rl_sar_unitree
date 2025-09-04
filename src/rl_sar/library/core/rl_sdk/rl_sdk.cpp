@@ -6,6 +6,7 @@
 #include "rl_sdk.hpp"
 #include <ATen/core/TensorBody.h>
 #include <fstream>
+#include <ostream>
 #include <vector>
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
@@ -117,12 +118,20 @@ torch::Tensor RL::ComputeObservation()
         else if (observation == "motion_anchor_ori_b")
         {
             // Use efficient quaternion utils for computation
-            std::cout << "torso quat: " << this->obs.torso_quat << std::endl;
+            // std::cout << "torso quat: " << this->obs.base_quat << std::endl;
             // std::cout << "pelvis quat: " << this->obs.base_quat << std::endl;
-            torso_quat = Eigen::Quaterniond(this->obs.torso_quat[0][3].item<double>(),
-                                                            this->obs.torso_quat[0][0].item<double>(),
-                                                            this->obs.torso_quat[0][1].item<double>(),
-                                                            this->obs.torso_quat[0][2].item<double>());
+            torso_quat = Eigen::Quaterniond(this->obs.base_quat[0][0].item<double>(),
+                                            this->obs.base_quat[0][1].item<double>(),
+                                            this->obs.base_quat[0][2].item<double>(),
+                                            this->obs.base_quat[0][3].item<double>());
+            double waist_yaw = this->obs.dof_pos[0][2].item<double>();
+            double waist_roll = this->obs.dof_pos[0][5].item<double>();
+            double waist_pitch = this->obs.dof_pos[0][8].item<double>();
+            Eigen::Quaterniond base_torso_yaw(Eigen::AngleAxisd(waist_yaw, Eigen::Vector3d::UnitZ()));
+            Eigen::Quaterniond base_torso_roll(Eigen::AngleAxisd(waist_roll, Eigen::Vector3d::UnitX()));
+            Eigen::Quaterniond base_torso_pitch(Eigen::AngleAxisd(waist_pitch, Eigen::Vector3d::UnitY()));
+            torso_quat = torso_quat * base_torso_yaw * base_torso_roll * base_torso_pitch;
+
             ref_motion_quat = Eigen::Quaterniond(this->ref_body_quat_w[0][0].item<double>(),
                                                                 this->ref_body_quat_w[0][1].item<double>(),
                                                                 this->ref_body_quat_w[0][2].item<double>(),
@@ -133,6 +142,11 @@ torch::Tensor RL::ComputeObservation()
                 auto init_to_anchor = this->YawQuaternion(ref_motion_quat);
                 auto world_to_anchor = this->YawQuaternion(torso_quat);
                 this->init_to_world = world_to_anchor * init_to_anchor.transpose();
+                std::cout << std::setprecision(6);
+                std::cout << "init_to_anchor: "<< init_to_anchor << std::endl;
+                std::cout << "world_to_anchor: " << world_to_anchor << std::endl;
+                std::cout << "init_to_world: " << this->init_to_world << std::endl;
+                this->calc_anchor_called ++;
             }
 
             motion_anchor_ori_b = torso_quat.toRotationMatrix().transpose() * this->init_to_world * ref_motion_quat.toRotationMatrix();
@@ -141,6 +155,7 @@ torch::Tensor RL::ComputeObservation()
                 motion_anchor_ori_b(1,0), motion_anchor_ori_b(1,1),
                 motion_anchor_ori_b(2,0), motion_anchor_ori_b(2,1)
             }, {1, 6});
+            // std::cout << "motion_anchor_ori_b_mat: " << motion_anchor_ori_b_mat << std::endl;
 
             obs_list.push_back(motion_anchor_ori_b_mat);
         }
