@@ -137,7 +137,7 @@ torch::Tensor RL::ComputeObservation()
                                                                 this->ref_body_quat_w[0][2].item<double>(),
                                                                 this->ref_body_quat_w[0][3].item<double>());
 
-            if (this->calc_anchor_called < 3)
+            if (this->calc_anchor_called < 2)
             {
                 auto init_to_anchor = this->YawQuaternion(ref_motion_quat);
                 auto world_to_anchor = this->YawQuaternion(torso_quat);
@@ -178,8 +178,12 @@ torch::Tensor RL::ComputeObservation()
 }
 
 Eigen::Matrix3d RL::YawQuaternion(const Eigen::Quaterniond& q) {
-    Eigen::Vector3d euler = q.toRotationMatrix().eulerAngles(0, 1, 2);
-    Eigen::AngleAxisd yawAngle(euler[2], Eigen::Vector3d::UnitZ());
+    // 直接从四元数提取yaw角度，避免欧拉角转换的不连续性问题
+    // yaw = atan2(2*(w*z + x*y), 1 - 2*(y^2 + z^2))
+    double yaw = std::atan2(2.0 * (q.w() * q.z() + q.x() * q.y()),
+                           1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z()));
+    
+    Eigen::AngleAxisd yawAngle(yaw, Eigen::Vector3d::UnitZ());
     return yawAngle.toRotationMatrix();
 }
 
@@ -200,6 +204,7 @@ void RL::InitObservations()
     this->init_to_world = Eigen::Matrix3d::Identity();
     this->motion_anchor_ori_b = Eigen::Matrix3d::Identity();
     this->motion_anchor_ori_b_mat = torch::tensor({{1.0, 0.0, 0.0, 1.0, 0.0, 0.0}});
+    this->calc_anchor_called = 0;
     this->ComputeObservation();
 }
 
@@ -267,18 +272,18 @@ void RL::InitRL(std::string robot_path)
             }
 
             // Get all output tensors for ref motion data
-            // auto outputs = this->onnx_engine.FirstOutput();
+            auto outputs = this->onnx_engine.FirstOutput();
 
-            // auto body_quat_w = this->onnx_engine.ExtractTensorData(outputs[4]);
+            auto body_quat_w = this->onnx_engine.ExtractTensorData(outputs[4]);
 
-            // std::vector<float> motion_anchor_quat_w = {body_quat_w[28], 
-            //                                             body_quat_w[29],
-            //                                             body_quat_w[30],
-            //                                             body_quat_w[31]};
+            std::vector<float> motion_anchor_quat_w = {body_quat_w[28], 
+                                                        body_quat_w[29],
+                                                        body_quat_w[30],
+                                                        body_quat_w[31]};
 
-            // this->ref_joint_pos = this->VectorToTensor(this->onnx_engine.ExtractTensorData(outputs[1]), {1, 29});
-            // this->ref_joint_vel = this->VectorToTensor(this->onnx_engine.ExtractTensorData(outputs[2]), {1, 29});
-            // this->ref_body_quat_w = this->VectorToTensor(motion_anchor_quat_w, {1, 4});
+            this->ref_joint_pos = this->VectorToTensor(this->onnx_engine.ExtractTensorData(outputs[1]), {1, 29});
+            this->ref_joint_vel = this->VectorToTensor(this->onnx_engine.ExtractTensorData(outputs[2]), {1, 29});
+            this->ref_body_quat_w = this->VectorToTensor(motion_anchor_quat_w, {1, 4});
 
             // Try to find corresponding PyTorch model for fallback
             std::string pt_model_path = model_path;
