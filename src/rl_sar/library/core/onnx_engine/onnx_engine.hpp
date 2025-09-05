@@ -44,6 +44,7 @@ public:
     // Get output names for indexing the results
     const std::vector<std::string>& GetOutputNames() const { return output_names_; }
     const std::vector<std::string>& GetInputNames() const { return input_names_; }
+    bool model_loaded_;
 // #endif
     
 private:
@@ -64,7 +65,6 @@ private:
     void PrintModelInfo();
 #endif
     
-    bool model_loaded_;
 };
 
 // #endif // ONNX_ENGINE_HPP

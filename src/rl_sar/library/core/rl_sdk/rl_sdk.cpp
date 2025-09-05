@@ -312,6 +312,7 @@ void RL::InitRL(std::string robot_path)
                 throw std::runtime_error("Failed to load PyTorch model: " + std::string(e.what()));
             }
             
+            this->onnx_engine.model_loaded_ = false;  // Reset ONNX model loaded flag
             // Try to load corresponding ONNX model
             std::string onnx_model_path = model_path;
             size_t pt_pos = onnx_model_path.find(".pt");

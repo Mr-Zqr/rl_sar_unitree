@@ -88,26 +88,26 @@ public:
         }
         if (rl.running_percent == 1.0f)
         {
-            if (rl.control.current_keyboard == Input::Keyboard::Num1 || rl.control.current_gamepad == Input::Gamepad::RB_DPadUp)
-            {
-                return "RLFSMStateRL_Locomotion";
-            }
-            else if (rl.control.current_keyboard == Input::Keyboard::Num2 || rl.control.current_gamepad == Input::Gamepad::RB_DPadDown)
+            // if (rl.control.current_keyboard == Input::Keyboard::Num1 || rl.control.current_gamepad == Input::Gamepad::RB_DPadUp)
+            // {
+            //     return "RLFSMStateRL_Locomotion";
+            // }
+            if (rl.control.current_keyboard == Input::Keyboard::Num2 || rl.control.current_gamepad == Input::Gamepad::RB_DPadDown)
             {
                 return "RLFSMStateRL_RoboMimicLoco";
             }
-            else if (rl.control.current_keyboard == Input::Keyboard::Num3 || rl.control.current_gamepad == Input::Gamepad::RB_DPadLeft)
-            {
-                return "RLFSMStateRL_RoboMimicDance";
-            }
-            else if (rl.control.current_keyboard == Input::Keyboard::Num4 || rl.control.current_gamepad == Input::Gamepad::RB_DPadRight)
-            {
-                return "RLFSMStateRL_RoboMimicKungFu";
-            }
-            else if (rl.control.current_keyboard == Input::Keyboard::Num5 || rl.control.current_gamepad == Input::Gamepad::LB_DPadUp)
-            {
-                return "RLFSMStateRL_RoboMimicKick";
-            }
+            // else if (rl.control.current_keyboard == Input::Keyboard::Num3 || rl.control.current_gamepad == Input::Gamepad::RB_DPadLeft)
+            // {
+            //     return "RLFSMStateRL_RoboMimicDance";
+            // }
+            // else if (rl.control.current_keyboard == Input::Keyboard::Num4 || rl.control.current_gamepad == Input::Gamepad::RB_DPadRight)
+            // {
+            //     return "RLFSMStateRL_RoboMimicKungFu";
+            // }
+            // else if (rl.control.current_keyboard == Input::Keyboard::Num5 || rl.control.current_gamepad == Input::Gamepad::LB_DPadUp)
+            // {
+            //     return "RLFSMStateRL_RoboMimicKick";
+            // }
             else if (rl.control.current_keyboard == Input::Keyboard::Num9 || rl.control.current_gamepad == Input::Gamepad::B)
             {
                 return "RLFSMStateGetDown";
@@ -315,11 +315,11 @@ public:
 
     std::string CheckChange() override
     {
-        if (rl.control.current_keyboard == Input::Keyboard::P || rl.control.current_gamepad == Input::Gamepad::LB_X)
+        if (rl.control.current_keyboard == Input::Keyboard::P || rl.control.current_gamepad == Input::Gamepad::LB_X || rl.control.current_gamepad == Input::Gamepad::B)
         {
             return "RLFSMStatePassive";
         }
-        else if (rl.control.current_keyboard == Input::Keyboard::Num9 || rl.control.current_gamepad == Input::Gamepad::B)
+        else if (rl.control.current_keyboard == Input::Keyboard::Num9 )
         {
             return "RLFSMStateGetDown";
         }
@@ -419,11 +419,11 @@ void Enter() override
 
     std::string CheckChange() override
     {
-        if (rl.control.current_keyboard == Input::Keyboard::P || rl.control.current_gamepad == Input::Gamepad::LB_X)
+        if (rl.control.current_keyboard == Input::Keyboard::P || rl.control.current_gamepad == Input::Gamepad::LB_X|| rl.control.current_gamepad == Input::Gamepad::B)
         {
             return "RLFSMStatePassive";
         }
-        else if (rl.control.current_keyboard == Input::Keyboard::Num9 || rl.control.current_gamepad == Input::Gamepad::B)
+        else if (rl.control.current_keyboard == Input::Keyboard::Num9 )
         {
             return "RLFSMStateGetDown";
         }
@@ -431,10 +431,14 @@ void Enter() override
         {
             return "RLFSMStateGetUp";
         }
-        else if (rl.control.current_keyboard == Input::Keyboard::Num1 || rl.control.current_gamepad == Input::Gamepad::RB_DPadUp)
+        else if (rl.control.current_keyboard == Input::Keyboard::Num2 || rl.control.current_gamepad == Input::Gamepad::RB_DPadDown)
         {
-            return "RLFSMStateRL_Locomotion";
+            return "RLFSMStateRL_RoboMimicLoco";
         }
+        // else if (rl.control.current_keyboard == Input::Keyboard::Num1 || rl.control.current_gamepad == Input::Gamepad::RB_DPadUp)
+        // {
+        //     return "RLFSMStateRL_Locomotion";
+        // }
         return state_name_;
     }
 };
